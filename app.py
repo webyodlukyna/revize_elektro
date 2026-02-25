@@ -15,7 +15,7 @@ st.set_page_config(
     page_title="Elektro revize",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",  # na mobilu sidebar schovaný
 )
 
 st.markdown("""
@@ -48,6 +48,23 @@ st.markdown("""
     color:#e0e0e0 !important; border-radius:6px !important;
   }
   hr { border-color:#2a2d3e !important; }
+
+  /* Karta revize pro mobil */
+  .revize-karta {
+    background:#1a1d27;
+    border:1px solid #2a2d3e;
+    border-radius:8px;
+    padding:14px 16px;
+    margin-bottom:10px;
+  }
+  .revize-karta .nazev { font-weight:600; font-size:1rem; margin-bottom:4px; }
+  .revize-karta .detail { font-size:0.82rem; color:#888; margin-bottom:6px; }
+
+  /* Responzivní sloupce – na úzkých obrazovkách skryjeme vedlejší sloupce */
+  @media (max-width: 640px) {
+    .desktop-only { display: none !important; }
+    h1 { font-size: 1.4rem !important; }
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -56,7 +73,8 @@ auth.vyzaduj_prihlaseni()
 
 # ─── Inicializace ─────────────────────────────────────────────────────────────
 db.init_db()
-dnes = date.today()
+dnes   = date.today()
+mobil  = st.session_state.get("mobil", False)
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -75,7 +93,7 @@ with st.sidebar:
     blizici = sum(1 for r in vsechny if 0 <= db.stav(r["datum_platnosti"])[2] <= 7)
 
     st.markdown(f"**Celkem revizí:** {len(vsechny)}")
-    st.markdown(f"<span style='color:#e74c3c'>**Prošlé:** {prosle}</span>",   unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#e74c3c'>**Prošlé:** {prosle}</span>",    unsafe_allow_html=True)
     st.markdown(f"<span style='color:#e67e22'>**Do 7 dní:** {blizici}</span>", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -105,21 +123,23 @@ if page == "📋 Přehled":
             if filtr == "❌ Pouze prošlé" and zbyvá >= 0:
                 continue
 
-            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
-            with col1:
-                st.markdown(f"**{r['nazev']}**")
-                st.caption(r.get("umisteni") or "—")
-            with col2:
-                st.markdown(f"<span style='font-size:0.8rem;color:#888'>Typ</span><br>{r.get('typ') or '—'}", unsafe_allow_html=True)
-            with col3:
-                st.markdown(f"<span style='font-size:0.8rem;color:#888'>Platnost do</span><br>{db.fmt_date(r['datum_platnosti'])}", unsafe_allow_html=True)
-            with col4:
-                st.markdown(f"<span class='status-badge {badge_cls}'>{stav_txt}</span>", unsafe_allow_html=True)
-            with col5:
-                if st.button("🗑️", key=f"del_{r['id']}", help="Smazat"):
-                    db.smazat(r["id"])
-                    st.rerun()
-            st.divider()
+            # Karta – funguje dobře na všech velikostech obrazovky
+            st.markdown(f"""
+            <div class="revize-karta">
+              <div class="nazev">{r['nazev']}</div>
+              <div class="detail">
+                📍 {r.get('umisteni') or '—'} &nbsp;·&nbsp;
+                🔧 {r.get('typ') or '—'} &nbsp;·&nbsp;
+                📅 {db.fmt_date(r['datum_platnosti'])}
+              </div>
+              <span class="status-badge {badge_cls}">{stav_txt}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Tlačítko smazat pod kartou
+            if st.button("🗑️ Smazat", key=f"del_{r['id']}"):
+                db.smazat(r["id"])
+                st.rerun()
 
 
 # ─── Přidat revizi ────────────────────────────────────────────────────────────
@@ -127,15 +147,18 @@ elif page == "➕ Přidat revizi":
     st.markdown("# ➕ Přidat novou revizi")
 
     with st.form("nova_revize"):
-        col1, col2 = st.columns(2)
+        nazev    = st.text_input("Název zařízení / objektu *", placeholder="např. Rozvaděč RH-01")
+        umisteni = st.text_input("Umístění", placeholder="např. Hala A, rozvodna")
+        typ      = st.selectbox("Typ revize", ["pravidelná", "výchozí", "mimořádná", "následná"])
+        technik  = st.text_input("Revizní technik", placeholder="Jméno technika")
+
+        # Na mobilu pod sebou, na desktopu vedle sebe
+        col1, col2 = st.columns([1, 1])
         with col1:
-            nazev    = st.text_input("Název zařízení / objektu *", placeholder="např. Rozvaděč RH-01")
-            umisteni = st.text_input("Umístění", placeholder="např. Hala A, rozvodna")
-            typ      = st.selectbox("Typ revize", ["pravidelná", "výchozí", "mimořádná", "následná"])
+            datum_rev  = st.date_input("Datum provedené revize",  value=dnes)
         with col2:
-            technik    = st.text_input("Revizní technik", placeholder="Jméno technika")
-            datum_rev  = st.date_input("Datum provedené revize",   value=dnes)
-            datum_plat = st.date_input("Platnost / příští revize",  value=dnes + timedelta(days=365))
+            datum_plat = st.date_input("Platnost / příští revize", value=dnes + timedelta(days=365))
+
         poznamka = st.text_area("Poznámka (volitelné)", height=80)
         odeslat  = st.form_submit_button("✅ Přidat revizi", use_container_width=True)
 
@@ -179,22 +202,20 @@ elif page == "🔔 Odeslat upozornění":
                     f"<span class='status-badge {badge_cls}'>{stav_txt}</span>",
                     unsafe_allow_html=True,
                 )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("📧 Odeslat upozornění", use_container_width=True):
-                    try:
-                        cfg_mod.odeslat_email(config, k_odeslani)
-                        db.oznacit_odeslano([r["id"] for r in k_odeslani])
-                        st.success(f"✅ E-mail odeslán na: {', '.join(config['prijemci'])}")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Chyba při odesílání: {e}")
-            with col2:
-                if st.button("🔄 Resetovat 'odesláno'", use_container_width=True):
-                    db.reset_odeslano()
-                    st.info("Reset proveden — všechna upozornění lze odeslat znovu.")
+            st.markdown("")
+            if st.button("📧 Odeslat upozornění", use_container_width=True):
+                try:
+                    cfg_mod.odeslat_email(config, k_odeslani)
+                    db.oznacit_odeslano([r["id"] for r in k_odeslani])
+                    st.success(f"✅ E-mail odeslán na: {', '.join(config['prijemci'])}")
                     st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Chyba při odesílání: {e}")
+
+            if st.button("🔄 Resetovat 'odesláno'", use_container_width=True):
+                db.reset_odeslano()
+                st.info("Reset proveden — všechna upozornění lze odeslat znovu.")
+                st.rerun()
 
 
 # ─── Nastavení e-mailu ────────────────────────────────────────────────────────
@@ -203,13 +224,10 @@ elif page == "⚙️ Nastavení e-mailu":
     config = cfg_mod.nacti_config()
 
     with st.form("nastaveni"):
-        col1, col2 = st.columns(2)
-        with col1:
-            smtp_host = st.text_input("SMTP server", value=config.get("smtp_host", "smtp.gmail.com"))
-            smtp_port = st.number_input("SMTP port",  value=int(config.get("smtp_port", 587)), step=1)
-        with col2:
-            smtp_user = st.text_input("Odesílací e-mail",     value=config.get("smtp_user", ""))
-            smtp_pass = st.text_input("Heslo / App Password", value=config.get("smtp_pass", ""), type="password")
+        smtp_host    = st.text_input("SMTP server",           value=config.get("smtp_host", "smtp.gmail.com"))
+        smtp_port    = st.number_input("SMTP port",           value=int(config.get("smtp_port", 587)), step=1)
+        smtp_user    = st.text_input("Odesílací e-mail",      value=config.get("smtp_user", ""))
+        smtp_pass    = st.text_input("Heslo / App Password",  value=config.get("smtp_pass", ""), type="password")
         prijemci_str = st.text_input(
             "Příjemci (oddělte čárkou)",
             value=", ".join(config.get("prijemci", [])),
