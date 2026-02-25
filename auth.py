@@ -17,7 +17,12 @@ import json
 from pathlib import Path
 
 import bcrypt
-import streamlit as st
+
+try:
+    import streamlit as st
+    _HAS_STREAMLIT = True
+except ImportError:
+    _HAS_STREAMLIT = False
 
 AUTH_CFG = Path("auth_config.json")
 
@@ -75,6 +80,8 @@ def vyzaduj_prihlaseni() -> None:
     Pokud heslo není nastaveno, zobrazí výzvu k nastavení.
     Blokuje zbytek aplikace dokud není přihlášeno.
     """
+    if not _HAS_STREAMLIT:
+        return  # CLI režim – přeskočit
     if st.session_state.get("prihlaseno"):
         return  # Již přihlášen — pokračuj normálně
 
