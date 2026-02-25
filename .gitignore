@@ -4,6 +4,9 @@
 # Konfigurace s (zašifrovaným) heslem
 revize_config.json
 
+# Hash hesla aplikace
+auth_config.json
+
 # Databáze – lokální data
 revize_elektro.db
 

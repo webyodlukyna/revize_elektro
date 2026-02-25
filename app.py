@@ -8,6 +8,7 @@ from datetime import date, timedelta
 
 import database as db
 import config as cfg_mod
+import auth
 
 # ─── Konfigurace stránky ──────────────────────────────────────────────────────
 st.set_page_config(
@@ -50,6 +51,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ─── Přihlašování ────────────────────────────────────────────────────────────
+auth.vyzaduj_prihlaseni()
+
 # ─── Inicializace ─────────────────────────────────────────────────────────────
 db.init_db()
 dnes = date.today()
@@ -73,6 +77,11 @@ with st.sidebar:
     st.markdown(f"**Celkem revizí:** {len(vsechny)}")
     st.markdown(f"<span style='color:#e74c3c'>**Prošlé:** {prosle}</span>",   unsafe_allow_html=True)
     st.markdown(f"<span style='color:#e67e22'>**Do 7 dní:** {blizici}</span>", unsafe_allow_html=True)
+
+    st.markdown("---")
+    if st.button("🔒 Odhlásit se", use_container_width=True):
+        st.session_state["prihlaseno"] = False
+        st.rerun()
 
 
 # ─── Přehled ──────────────────────────────────────────────────────────────────
