@@ -1,5 +1,19 @@
 """
 config.py – Správa konfigurace a odesílání e-mailů
+===================================================
+Bezpečnost:
+  - Lokálně: heslo zašifrováno pomocí Fernet (symetrická šifra AES-128)
+             klíč uložen v separátním souboru .secret.key
+  - Cloud:   načítá ze Streamlit Secrets (st.secrets), JSON soubor se vůbec nepoužívá
+
+Streamlit Secrets (pro nasazení na share.streamlit.io):
+  V dashboardu přidejte sekci [email]:
+    [email]
+    smtp_host = "smtp.gmail.com"
+    smtp_port = 587
+    smtp_user = "vas@email.cz"
+    smtp_pass = "app-password"
+    prijemci  = ["prijemce1@email.cz", "prijemce2@email.cz"]
 """
 
 import json
@@ -8,28 +22,127 @@ import smtplib
 from datetime import date, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
-CFG_PATH = "revize_config.json"
+from cryptography.fernet import Fernet
 
+# ─── Cesty ────────────────────────────────────────────────────────────────────
+CFG_PATH = Path("revize_config.json")
+KEY_PATH = Path(".secret.key")   # skrytý soubor, NIKDY nedávat do Gitu
+
+
+# ─── Detekce prostředí ────────────────────────────────────────────────────────
+
+def _je_streamlit_cloud() -> bool:
+    """Vrátí True pokud běžíme na Streamlit Cloud a secrets jsou k dispozici."""
+    try:
+        import streamlit as st
+        _ = st.secrets["email"]["smtp_user"]
+        return True
+    except Exception:
+        return False
+
+
+# ─── Správa šifrovacího klíče ─────────────────────────────────────────────────
+
+def _nacti_nebo_vygeneruj_klic() -> Fernet:
+    """Načte existující klíč nebo vygeneruje nový a uloží ho."""
+    if KEY_PATH.exists():
+        key = KEY_PATH.read_bytes()
+    else:
+        key = Fernet.generate_key()
+        KEY_PATH.write_bytes(key)
+        # Skryjeme soubor na Windows
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetFileAttributesW(str(KEY_PATH), 2)  # FILE_ATTRIBUTE_HIDDEN
+        except Exception:
+            pass
+        print(f"[config] Vygenerován nový šifrovací klíč: {KEY_PATH}")
+    return Fernet(key)
+
+
+def _sifrovani() -> Fernet:
+    return _nacti_nebo_vygeneruj_klic()
+
+
+# ─── Načtení konfigurace ──────────────────────────────────────────────────────
 
 def nacti_config() -> dict:
-    if os.path.exists(CFG_PATH):
-        with open(CFG_PATH, encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    """
+    Načte konfiguraci:
+      - Z Streamlit Secrets (pokud běží na cloudu)
+      - Ze zašifrovaného JSON souboru (lokálně)
+    Vrátí dict s klíči: smtp_host, smtp_port, smtp_user, smtp_pass, prijemci
+    """
+    if _je_streamlit_cloud():
+        import streamlit as st
+        s = st.secrets["email"]
+        return {
+            "smtp_host": s["smtp_host"],
+            "smtp_port": int(s["smtp_port"]),
+            "smtp_user": s["smtp_user"],
+            "smtp_pass": s["smtp_pass"],
+            "prijemci":  list(s["prijemci"]),
+        }
 
+    if not CFG_PATH.exists():
+        return {}
+
+    raw = json.loads(CFG_PATH.read_text(encoding="utf-8"))
+    fernet = _sifrovani()
+
+    # Dešifrujeme heslo (zpětná kompatibilita: pokud ještě není zašifrováno)
+    smtp_pass = raw.get("smtp_pass", "")
+    if smtp_pass.startswith("enc:"):
+        try:
+            smtp_pass = fernet.decrypt(smtp_pass[4:].encode()).decode()
+        except Exception:
+            smtp_pass = ""
+
+    return {
+        "smtp_host": raw.get("smtp_host", "smtp.gmail.com"),
+        "smtp_port": int(raw.get("smtp_port", 587)),
+        "smtp_user": raw.get("smtp_user", ""),
+        "smtp_pass": smtp_pass,
+        "prijemci":  raw.get("prijemci", []),
+    }
+
+
+# ─── Uložení konfigurace ──────────────────────────────────────────────────────
 
 def uloz_config(cfg: dict) -> None:
-    with open(CFG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    """
+    Uloží konfiguraci lokálně.
+    Heslo je zašifrováno Fernetem před zápisem do JSON.
+    Na Streamlit Cloud se nepoužívá — konfigurace je v Secrets.
+    """
+    fernet    = _sifrovani()
+    encrypted = "enc:" + fernet.encrypt(cfg["smtp_pass"].encode()).decode()
 
+    data = {
+        "smtp_host": cfg["smtp_host"],
+        "smtp_port": int(cfg["smtp_port"]),
+        "smtp_user": cfg["smtp_user"],
+        "smtp_pass": encrypted,          # nikdy plain text
+        "prijemci":  cfg["prijemci"],
+    }
+    CFG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# ─── Validace ─────────────────────────────────────────────────────────────────
 
 def config_ok(cfg: dict) -> bool:
-    """Vrátí True, pokud je konfigurace kompletní."""
-    return bool(cfg.get("smtp_user") and cfg.get("smtp_pass") and cfg.get("prijemci"))
+    """Vrátí True, pokud je konfigurace kompletní pro odesílání."""
+    return bool(
+        cfg.get("smtp_host")
+        and cfg.get("smtp_user")
+        and cfg.get("smtp_pass")
+        and cfg.get("prijemci")
+    )
 
 
-# ─── E-mail ───────────────────────────────────────────────────────────────────
+# ─── Sestavení HTML e-mailu ───────────────────────────────────────────────────
 
 def _fmt_date(d: str) -> str:
     return datetime.strptime(d, "%Y-%m-%d").strftime("%d.%m.%Y") if d else "—"
@@ -91,13 +204,15 @@ def _sestavit_html(rows: list[dict], dnes: date) -> str:
     </body></html>"""
 
 
+# ─── Odesílání e-mailu ────────────────────────────────────────────────────────
+
 def odeslat_email(cfg: dict, rows: list[dict]) -> None:
     """
     Sestaví a odešle HTML e-mail s přehledem revizí.
-    Vyvolá výjimku při chybě (ošetřete na straně volajícího).
+    Vyvolá výjimku při chybě — ošetřete na straně volajícího.
     """
-    dnes  = date.today()
-    html  = _sestavit_html(rows, dnes)
+    dnes = date.today()
+    html = _sestavit_html(rows, dnes)
 
     msg            = MIMEMultipart("alternative")
     msg["Subject"] = f"⚠️ Upozornění na elektro revize – {dnes.strftime('%d.%m.%Y')}"
