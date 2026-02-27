@@ -244,6 +244,19 @@ elif page == "⚙️ Nastavení e-mailu":
             st.success("✅ Nastavení uloženo!")
 
     st.markdown("---")
+    st.markdown("### 🔌 Test připojení k databázi")
+    if st.button("🔍 Otestovat připojení", use_container_width=True):
+        try:
+            db.init_db()
+            pocet = len(db.get_all())
+            if db._je_supabase():
+                st.success(f"✅ Supabase připojeno! Počet revizí v databázi: **{pocet}**")
+            else:
+                st.success(f"✅ SQLite připojeno (lokální režim). Počet revizí: **{pocet}**")
+        except Exception as e:
+            st.error(f"❌ Připojení selhalo: {e}")
+
+    st.markdown("---")
     st.markdown("""
     ### 💡 Tipy pro Gmail
     1. Zapněte **Dvoufázové ověření** ve svém Google účtu
