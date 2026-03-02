@@ -270,60 +270,6 @@ if page == "📋 Přehled":
     if not vsechny:
         st.info("Zatím žádné revize. Přidejte první pomocí menu vlevo.")
     else:
-        st.markdown("### 📊 Dashboard")
-        pocet_proslych = 0
-        pocet_do_7 = 0
-        pocet_do_30 = 0
-
-        for row in vsechny:
-            _, _, zbyva = db.stav(row["datum_platnosti"])
-            if zbyva < 0:
-                pocet_proslych += 1
-            if zbyva <= 7:
-                pocet_do_7 += 1
-            if zbyva <= 30:
-                pocet_do_30 += 1
-
-        met1, met2, met3, met4 = st.columns(4)
-        met1.metric("Celkem revizí", len(vsechny))
-        met2.metric("Prošlé", pocet_proslych)
-        met3.metric("Do 7 dní", pocet_do_7)
-        met4.metric("Do 30 dní", pocet_do_30)
-
-        chart_col1, chart_col2 = st.columns(2)
-
-        with chart_col1:
-            monthly = []
-            horizon_end = dnes + timedelta(days=180)
-            for row in vsechny:
-                parsed = pd.to_datetime(row["datum_platnosti"], errors="coerce")
-                if pd.isna(parsed):
-                    continue
-                row_date = parsed.date()
-                if dnes <= row_date <= horizon_end:
-                    monthly.append(row_date.strftime("%Y-%m"))
-
-            if monthly:
-                month_counts = pd.Series(monthly).value_counts().sort_index()
-                month_df = month_counts.rename_axis("měsíc").reset_index(name="počet")
-                st.caption("Platnosti v následujících 6 měsících")
-                st.bar_chart(month_df.set_index("měsíc"))
-            else:
-                st.caption("Platnosti v následujících 6 měsících")
-                st.info("Žádná data pro graf.")
-
-        with chart_col2:
-            type_values = [(r.get("typ") or "Neuvedeno").strip() or "Neuvedeno" for r in vsechny]
-            if type_values:
-                type_counts = pd.Series(type_values).value_counts()
-                type_df = type_counts.rename_axis("typ").reset_index(name="počet")
-                st.caption("Rozložení podle typu revize")
-                st.bar_chart(type_df.set_index("typ"))
-            else:
-                st.caption("Rozložení podle typu revize")
-                st.info("Žádná data pro graf.")
-
-        st.markdown("---")
         vse_typy = sorted({(r.get("typ") or "").strip() for r in vsechny if (r.get("typ") or "").strip()})
         vse_technici = sorted({(r.get("revizni_technik") or "").strip() for r in vsechny if (r.get("revizni_technik") or "").strip()})
         vse_umisteni = sorted({(r.get("umisteni") or "").strip() for r in vsechny if (r.get("umisteni") or "").strip()})
