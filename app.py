@@ -243,20 +243,66 @@ if page == "📋 Přehled":
     if not vsechny:
         st.info("Zatím žádné revize. Přidejte první pomocí menu vlevo.")
     else:
-        col_filtr, col_export = st.columns([3, 1])
-        with col_filtr:
-            filtr = st.selectbox("Filtr", [
+        vse_typy = sorted({(r.get("typ") or "").strip() for r in vsechny if (r.get("typ") or "").strip()})
+        vse_technici = sorted({(r.get("revizni_technik") or "").strip() for r in vsechny if (r.get("revizni_technik") or "").strip()})
+        vse_umisteni = sorted({(r.get("umisteni") or "").strip() for r in vsechny if (r.get("umisteni") or "").strip()})
+
+        hledat = st.text_input(
+            "Hledat (název, umístění, typ, technik, poznámka)",
+            placeholder="např. RH-01, Hala A, mimořádná...",
+        ).strip().lower()
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            filtr_stav = st.selectbox("Stav", [
                 "Všechny",
                 "⚠️ Prošlé a blížící se (≤ 30 dní)",
                 "❌ Pouze prošlé",
+                "✅ Pouze platné",
             ])
+        with col2:
+            filtr_typ = st.selectbox("Typ revize", ["Všechny"] + vse_typy)
+        with col3:
+            filtr_technik = st.selectbox("Revizní technik", ["Všichni"] + vse_technici)
+
+        filtr_umisteni = st.selectbox("Umístění", ["Všechna"] + vse_umisteni)
+
+        filtrovane = []
+        for r in vsechny:
+            stav_txt, badge_cls, zbyva = db.stav(r["datum_platnosti"])
+
+            if filtr_stav == "⚠️ Prošlé a blížící se (≤ 30 dní)" and zbyva > 30:
+                continue
+            if filtr_stav == "❌ Pouze prošlé" and zbyva >= 0:
+                continue
+            if filtr_stav == "✅ Pouze platné" and zbyva < 0:
+                continue
+
+            if filtr_typ != "Všechny" and (r.get("typ") or "").strip() != filtr_typ:
+                continue
+            if filtr_technik != "Všichni" and (r.get("revizni_technik") or "").strip() != filtr_technik:
+                continue
+            if filtr_umisteni != "Všechna" and (r.get("umisteni") or "").strip() != filtr_umisteni:
+                continue
+
+            if hledat:
+                searchable = " ".join([
+                    (r.get("nazev") or ""),
+                    (r.get("umisteni") or ""),
+                    (r.get("typ") or ""),
+                    (r.get("revizni_technik") or ""),
+                    (r.get("poznamka") or ""),
+                ]).lower()
+                if hledat not in searchable:
+                    continue
+
+            filtrovane.append((r, stav_txt, badge_cls))
+
+        col_info, col_export = st.columns([3, 1])
+        with col_info:
+            st.caption(f"Zobrazeno: {len(filtrovane)} z {len(vsechny)} revizí")
         with col_export:
-            st.markdown("<br>", unsafe_allow_html=True)
-            filtrovane = [r for r in vsechny if not (
-                (filtr == "⚠️ Prošlé a blížící se (≤ 30 dní)" and db.stav(r["datum_platnosti"])[2] > 30) or
-                (filtr == "❌ Pouze prošlé" and db.stav(r["datum_platnosti"])[2] >= 0)
-            )]
-            pdf_bytes = export.generuj_pdf(filtrovane, filtr)
+            pdf_bytes = export.generuj_pdf([item[0] for item in filtrovane], f"Pokročilý filtr: {filtr_stav}")
             st.download_button(
                 label="📄 Export PDF",
                 data=pdf_bytes,
@@ -265,28 +311,23 @@ if page == "📋 Přehled":
                 use_container_width=True,
             )
 
-        for r in vsechny:
-            stav_txt, badge_cls, zbyvá = db.stav(r["datum_platnosti"])
+        if not filtrovane:
+            st.info("Žádné revize neodpovídají zadaným filtrům.")
 
-            if filtr == "⚠️ Prošlé a blížící se (≤ 30 dní)" and zbyvá > 30:
-                continue
-            if filtr == "❌ Pouze prošlé" and zbyvá >= 0:
-                continue
-
-            # Karta – funguje dobře na všech velikostech obrazovky
+        for r, stav_txt, badge_cls in filtrovane:
             st.markdown(f"""
             <div class="revize-karta">
               <div class="nazev">{r['nazev']}</div>
               <div class="detail">
                 📍 {r.get('umisteni') or '—'} &nbsp;·&nbsp;
                 🔧 {r.get('typ') or '—'} &nbsp;·&nbsp;
+                👷 {r.get('revizni_technik') or '—'} &nbsp;·&nbsp;
                 📅 {db.fmt_date(r['datum_platnosti'])}
               </div>
               <span class="status-badge {badge_cls}">{stav_txt}</span>
             </div>
             """, unsafe_allow_html=True)
 
-            # Tlačítko smazat pod kartou
             if st.button("🗑️ Smazat", key=f"del_{r['id']}"):
                 db.smazat(r["id"])
                 st.rerun()
