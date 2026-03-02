@@ -29,6 +29,16 @@ BARVA_RADEK_2   = colors.white
 BARVA_TEXT      = colors.HexColor("#2c3e50")
 
 
+def _ics_escape(value: str) -> str:
+    return (
+        str(value or "")
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+    )
+
+
 def _stav_barva(datum_platnosti: str) -> tuple[str, colors.Color]:
     """Vrátí text stavu a barvu pro PDF."""
     plat  = datetime.strptime(datum_platnosti, "%Y-%m-%d").date()
@@ -67,7 +77,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
         rightMargin=15 * mm,
         topMargin=15 * mm,
         bottomMargin=15 * mm,
-        title="Přehled elektro revizí",
+        title="Přehled revizí – RP ELECTRIC SOLUTION s.r.o.",
         author="Systém hlídání revizí",
     )
 
@@ -102,7 +112,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
     prvky = []
 
     # Hlavička
-    prvky.append(Paragraph("⚡ Přehled elektro revizí", nadpis_style))
+    prvky.append(Paragraph("⚡ Přehled revizí – RP ELECTRIC SOLUTION s.r.o.", nadpis_style))
     dnes_txt = date.today().strftime("%d.%m.%Y")
     prvky.append(Paragraph(
         f"Vygenerováno: {dnes_txt}  ·  Filtr: {filtr}  ·  Celkem záznamů: {len(revize)}",
@@ -195,3 +205,51 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
     doc.build(prvky)
     buffer.seek(0)
     return buffer.read()
+
+
+def generuj_ics(revize: list[dict], calendar_name: str = "RP ELECTRIC SOLUTION s.r.o. – Revize") -> bytes:
+    """Vygeneruje iCalendar (.ics) s termíny platnosti revizí."""
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//RP ELECTRIC SOLUTION s.r.o.//Revize//CS",
+        "CALSCALE:GREGORIAN",
+        f"X-WR-CALNAME:{_ics_escape(calendar_name)}",
+    ]
+
+    dtstamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+    for r in revize:
+        try:
+            due = datetime.strptime(r.get("datum_platnosti", ""), "%Y-%m-%d").date()
+        except Exception:
+            continue
+
+        uid = f"revize-{r.get('id', 'x')}-{due.strftime('%Y%m%d')}@rp-electric-solution.local"
+        dtstart = due.strftime("%Y%m%d")
+        dtend = due.fromordinal(due.toordinal() + 1).strftime("%Y%m%d")
+
+        summary = f"Revize: {r.get('nazev') or 'Bez názvu'}"
+        description_parts = [
+            f"Typ: {r.get('typ') or '—'}",
+            f"Technik: {r.get('revizni_technik') or '—'}",
+            f"Platnost: {due.strftime('%d.%m.%Y')}",
+            f"Poznámka: {r.get('poznamka') or '—'}",
+        ]
+        description = "\\n".join(description_parts)
+
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{_ics_escape(uid)}",
+            f"DTSTAMP:{dtstamp}",
+            f"DTSTART;VALUE=DATE:{dtstart}",
+            f"DTEND;VALUE=DATE:{dtend}",
+            f"SUMMARY:{_ics_escape(summary)}",
+            f"LOCATION:{_ics_escape(r.get('umisteni') or '')}",
+            f"DESCRIPTION:{_ics_escape(description)}",
+            "END:VEVENT",
+        ])
+
+    lines.append("END:VCALENDAR")
+    content = "\r\n".join(lines) + "\r\n"
+    return content.encode("utf-8")

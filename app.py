@@ -240,9 +240,10 @@ with st.sidebar:
         "➕ Přidat revizi",
         "📥 Import z Excelu",
         "📎 Přílohy a historie",
+        "📅 Kalendář (ICS)",
         "🔔 Odeslat upozornění",
         "🧾 Audit log",
-        "⚙️ Nastavení e-mailu",
+        "⚙️ Nastavení notifikací",
     ])
     st.markdown("---")
 
@@ -682,14 +683,72 @@ elif page == "📎 Přílohy a historie":
         st.dataframe(pd.DataFrame(hist_rows), use_container_width=True, hide_index=True)
 
 
+# ─── Kalendář (ICS) ─────────────────────────────────────────────────────────
+elif page == "📅 Kalendář (ICS)":
+    st.markdown("# 📅 Export kalendáře (.ics)")
+    st.caption("Export funguje pro Outlook, Google Calendar, Apple Calendar i mobilní kalendáře.")
+
+    col_h, col_flags = st.columns([2, 2])
+    with col_h:
+        horizon_days = st.slider("Horizont exportu (dny)", min_value=7, max_value=730, value=90, step=1)
+    with col_flags:
+        include_overdue = st.checkbox("Zahrnout i prošlé revize", value=False)
+
+    k_exportu = []
+    for r in vsechny:
+        parsed = pd.to_datetime(str(r.get("datum_platnosti") or ""), errors="coerce")
+        if pd.isna(parsed):
+            continue
+        delta = (parsed.date() - dnes).days
+        if include_overdue:
+            if delta <= horizon_days:
+                k_exportu.append(r)
+        else:
+            if 0 <= delta <= horizon_days:
+                k_exportu.append(r)
+
+    st.info(f"Vybráno událostí do kalendáře: **{len(k_exportu)}**")
+
+    if k_exportu:
+        preview_rows = []
+        for r in k_exportu:
+            stav_txt, _, _ = db.stav(r["datum_platnosti"])
+            preview_rows.append({
+                "Název": r.get("nazev") or "",
+                "Umístění": r.get("umisteni") or "",
+                "Typ": r.get("typ") or "",
+                "Platnost": db.fmt_date(r.get("datum_platnosti")),
+                "Stav": stav_txt,
+            })
+        st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+
+    ics_bytes = export.generuj_ics(k_exportu)
+    if st.download_button(
+        label="📅 Stáhnout kalendář (.ics)",
+        data=ics_bytes,
+        file_name=f"revize_kalendar_{dnes.strftime('%Y%m%d')}.ics",
+        mime="text/calendar",
+        use_container_width=True,
+        disabled=not bool(k_exportu),
+    ):
+        db.log_akce("export_ics", f"Exportováno {len(k_exportu)} událostí do ICS", _current_user())
+        st.success("ICS export připraven.")
+
+
 # ─── Odeslat upozornění ───────────────────────────────────────────────────────
 elif page == "🔔 Odeslat upozornění":
-    st.markdown("# 🔔 Odeslat e-mailová upozornění")
+    st.markdown("# 🔔 Odeslat upozornění")
     config = cfg_mod.nacti_config()
+    email_ready = cfg_mod.config_ok(config)
+    webhook_ready = cfg_mod.webhook_ok(config)
 
-    if not cfg_mod.config_ok(config):
-        st.warning("⚠️ Nejprve nastavte e-mail v sekci **⚙️ Nastavení e-mailu**.")
+    if not email_ready and not webhook_ready:
+        st.warning("⚠️ Nejprve nastavte e-mail nebo webhook v sekci **⚙️ Nastavení notifikací**.")
     else:
+        st.markdown("### Kanály odeslání")
+        send_email = st.checkbox("📧 E-mail", value=email_ready, disabled=not email_ready)
+        send_webhook = st.checkbox("🌐 Webhook / SMS brána", value=webhook_ready, disabled=not webhook_ready)
+
         col_days, col_sent = st.columns([2, 1])
         with col_days:
             dny_horizont = st.slider("Horizont upozornění (dny)", min_value=1, max_value=90, value=7, step=1)
@@ -750,10 +809,29 @@ elif page == "🔔 Odeslat upozornění":
             st.markdown("")
             if st.button("📧 Odeslat upozornění", use_container_width=True, disabled=not _is_admin()):
                 try:
-                    cfg_mod.odeslat_email(config, k_odeslani)
+                    if not send_email and not send_webhook:
+                        st.error("Vyberte alespoň jeden kanál odeslání.")
+                        st.stop()
+
+                    if send_email:
+                        cfg_mod.odeslat_email(config, k_odeslani)
+                    if send_webhook:
+                        cfg_mod.odeslat_webhook(config, k_odeslani)
+
                     db.oznacit_odeslano([r["id"] for r in k_odeslani])
-                    db.log_akce("send_alert", f"Odesláno upozornění pro {len(k_odeslani)} revizí", _current_user())
-                    st.success(f"✅ E-mail odeslán na: {', '.join(config['prijemci'])}")
+                    kanal_txt = []
+                    if send_email:
+                        kanal_txt.append("e-mail")
+                    if send_webhook:
+                        kanal_txt.append("webhook")
+                    db.log_akce("send_alert", f"Odesláno upozornění pro {len(k_odeslani)} revizí ({', '.join(kanal_txt)})", _current_user())
+
+                    if send_email and send_webhook:
+                        st.success(f"✅ Upozornění odesláno e-mailem i webhookem ({len(k_odeslani)} revizí).")
+                    elif send_email:
+                        st.success(f"✅ E-mail odeslán na: {', '.join(config['prijemci'])}")
+                    else:
+                        st.success(f"✅ Webhook odeslán ({len(k_odeslani)} revizí).")
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Chyba při odesílání: {e}")
@@ -799,9 +877,9 @@ elif page == "🧾 Audit log":
         )
 
 
-# ─── Nastavení e-mailu ────────────────────────────────────────────────────────
-elif page == "⚙️ Nastavení e-mailu":
-    st.markdown("# ⚙️ Nastavení e-mailu")
+# ─── Nastavení notifikací ───────────────────────────────────────────────────
+elif page == "⚙️ Nastavení notifikací":
+    st.markdown("# ⚙️ Nastavení notifikací")
     if not _is_admin():
         st.warning("Tato sekce je dostupná pouze pro roli admin.")
         st.stop()
@@ -817,6 +895,11 @@ elif page == "⚙️ Nastavení e-mailu":
             "Příjemci (oddělte čárkou)",
             value=", ".join(config.get("prijemci", [])),
         )
+        webhook_url  = st.text_input(
+            "Webhook URL (volitelné)",
+            value=config.get("webhook_url", ""),
+            placeholder="https://...",
+        )
 
         if st.form_submit_button("💾 Uložit nastavení", use_container_width=True):
             cfg_mod.uloz_config({
@@ -825,7 +908,9 @@ elif page == "⚙️ Nastavení e-mailu":
                 "smtp_user": smtp_user,
                 "smtp_pass": smtp_pass,
                 "prijemci":  [e.strip() for e in prijemci_str.split(",") if e.strip()],
+                "webhook_url": str(webhook_url or "").strip(),
             })
+            db.log_akce("update_config", "Upraveno nastavení e-mailu/webhooku", _current_user())
             st.success("✅ Nastavení uloženo!")
 
     st.markdown("---")

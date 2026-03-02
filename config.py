@@ -19,6 +19,8 @@ Streamlit Secrets (pro nasazení na share.streamlit.io):
 import json
 import os
 import smtplib
+import urllib.request
+import urllib.error
 from datetime import date, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -84,6 +86,7 @@ def nacti_config() -> dict:
             "smtp_user": s["smtp_user"],
             "smtp_pass": s["smtp_pass"],
             "prijemci":  list(s["prijemci"]),
+            "webhook_url": s.get("webhook_url", ""),
         }
 
     if not CFG_PATH.exists():
@@ -106,6 +109,7 @@ def nacti_config() -> dict:
         "smtp_user": raw.get("smtp_user", ""),
         "smtp_pass": smtp_pass,
         "prijemci":  raw.get("prijemci", []),
+        "webhook_url": raw.get("webhook_url", ""),
     }
 
 
@@ -126,6 +130,7 @@ def uloz_config(cfg: dict) -> None:
         "smtp_user": cfg["smtp_user"],
         "smtp_pass": encrypted,          # nikdy plain text
         "prijemci":  cfg["prijemci"],
+        "webhook_url": cfg.get("webhook_url", ""),
     }
     CFG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -140,6 +145,10 @@ def config_ok(cfg: dict) -> bool:
         and cfg.get("smtp_pass")
         and cfg.get("prijemci")
     )
+
+
+def webhook_ok(cfg: dict) -> bool:
+    return bool((cfg.get("webhook_url") or "").strip())
 
 
 # ─── Sestavení HTML e-mailu ───────────────────────────────────────────────────
@@ -191,14 +200,14 @@ def _sestavit_html(rows: list[dict], dnes: date) -> str:
     return f"""
     <html><body style='font-family:Arial,sans-serif;max-width:800px;margin:auto;padding:20px'>
       <div style='background:#2c3e50;color:white;padding:20px;border-radius:6px 6px 0 0'>
-        <h1 style='margin:0'>⚡ Hlídání elektro revizí</h1>
+        <h1 style='margin:0'>⚡ RP ELECTRIC SOLUTION s.r.o.</h1>
         <p style='margin:5px 0 0'>{dnes.strftime('%d.%m.%Y')}</p>
       </div>
       <div style='padding:20px;border:1px solid #ddd;border-top:none;border-radius:0 0 6px 6px'>
         {sekce_prosle}
         {sekce_blizici}
         <p style='color:#7f8c8d;font-size:12px;margin-top:30px'>
-          Automatické upozornění – systém hlídání elektro revizí
+                    Automatické upozornění – RP ELECTRIC SOLUTION s.r.o.
         </p>
       </div>
     </body></html>"""
@@ -225,3 +234,46 @@ def odeslat_email(cfg: dict, rows: list[dict]) -> None:
         server.starttls()
         server.login(cfg["smtp_user"], cfg["smtp_pass"])
         server.sendmail(cfg["smtp_user"], cfg["prijemci"], msg.as_string())
+
+
+def odeslat_webhook(cfg: dict, rows: list[dict]) -> None:
+    """
+    Odešle upozornění přes webhook (JSON POST).
+    Vhodné pro SMS brány, Teams, Slack, Make/Zapier apod.
+    """
+    webhook_url = (cfg.get("webhook_url") or "").strip()
+    if not webhook_url:
+        raise ValueError("Webhook URL není nastaveno.")
+
+    dnes = date.today()
+    payload = {
+        "source": "RP ELECTRIC SOLUTION s.r.o.",
+        "generated_at": dnes.strftime("%Y-%m-%d"),
+        "count": len(rows),
+        "items": [
+            {
+                "id": r.get("id"),
+                "nazev": r.get("nazev"),
+                "umisteni": r.get("umisteni"),
+                "typ": r.get("typ"),
+                "datum_platnosti": r.get("datum_platnosti"),
+                "revizni_technik": r.get("revizni_technik"),
+            }
+            for r in rows
+        ],
+    }
+
+    req = urllib.request.Request(
+        webhook_url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            code = getattr(resp, "status", 200)
+            if code >= 400:
+                raise RuntimeError(f"Webhook vrátil HTTP {code}")
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Webhook odeslání selhalo: {exc}") from exc
