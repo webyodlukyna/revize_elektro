@@ -275,9 +275,5 @@ elif page == "⚙️ Nastavení e-mailu":
 
     st.markdown("---")
     st.markdown("""
-    ### 🌐 Nasazení na Streamlit Cloud (zdarma)
-    1. Nahrajte všechny `.py` soubory na **GitHub**
-    2. Jděte na [share.streamlit.io](https://share.streamlit.io)
-    3. Přihlaste se přes GitHub a klikněte **Deploy**
-    4. Heslo zadejte přes **Secrets** v dashboardu (ne přímo do kódu)
+    ### RP ELECTRIC SOLUTION s.r.o. | Revize bez kompromisů
     """)
