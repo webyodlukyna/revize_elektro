@@ -5,15 +5,147 @@ Spuštění: streamlit run app.py
 
 import streamlit as st
 from datetime import date, timedelta
+import pandas as pd
 
 import database as db
 import config as cfg_mod
 import auth
 import export
 
+
+REQUIRED_IMPORT_FIELDS = ["nazev", "datum_revize", "datum_platnosti"]
+
+
+def _normalize_text(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in {"nan", "none"} else text
+
+
+def _normalize_col_name(col_name: str) -> str:
+    return (
+        col_name.strip().lower()
+        .replace("á", "a")
+        .replace("č", "c")
+        .replace("ď", "d")
+        .replace("é", "e")
+        .replace("ě", "e")
+        .replace("í", "i")
+        .replace("ň", "n")
+        .replace("ó", "o")
+        .replace("ř", "r")
+        .replace("š", "s")
+        .replace("ť", "t")
+        .replace("ú", "u")
+        .replace("ů", "u")
+        .replace("ý", "y")
+        .replace("ž", "z")
+        .replace(" ", "_")
+    )
+
+
+def _parse_date(value, field_name: str, row_number: int, errors: list[str]):
+    if value is None or str(value).strip() == "":
+        errors.append(f"Řádek {row_number}: chybí {field_name}.")
+        return None
+    parsed = pd.to_datetime(value, dayfirst=True, errors="coerce")
+    if pd.isna(parsed):
+        errors.append(f"Řádek {row_number}: neplatné datum v poli {field_name}.")
+        return None
+    return parsed.date()
+
+
+def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
+    alias_map = {
+        "nazev": "nazev",
+        "nazev_zarizeni": "nazev",
+        "zarizeni": "nazev",
+        "objekt": "nazev",
+        "umisteni": "umisteni",
+        "typ": "typ",
+        "typ_revize": "typ",
+        "datum_revize": "datum_revize",
+        "provedena": "datum_revize",
+        "datum_provedeni": "datum_revize",
+        "datum_platnosti": "datum_platnosti",
+        "platnost": "datum_platnosti",
+        "pristi_revize": "datum_platnosti",
+        "revizni_technik": "revizni_technik",
+        "technik": "revizni_technik",
+        "poznamka": "poznamka",
+    }
+
+    rename_map = {}
+    for col in df.columns:
+        normalized = _normalize_col_name(str(col))
+        if normalized in alias_map:
+            rename_map[col] = alias_map[normalized]
+
+    normalized_df = df.rename(columns=rename_map)
+
+    missing = [field for field in REQUIRED_IMPORT_FIELDS if field not in normalized_df.columns]
+    if missing:
+        return [], [
+            "Soubor neobsahuje povinné sloupce: "
+            + ", ".join(missing)
+            + ". Povinné: nazev, datum_revize, datum_platnosti."
+        ]
+
+    db_keys = {
+        (
+            _normalize_text(r.get("nazev")).lower(),
+            _normalize_text(r.get("umisteni")).lower(),
+            _normalize_text(r.get("datum_platnosti")),
+        )
+        for r in existing_rows
+    }
+
+    import_keys = set()
+    valid_rows = []
+    errors = []
+
+    for row_number, (_, row) in enumerate(normalized_df.iterrows(), start=2):
+
+        nazev = _normalize_text(row.get("nazev"))
+        if not nazev:
+            errors.append(f"Řádek {row_number}: chybí název.")
+            continue
+
+        datum_rev = _parse_date(row.get("datum_revize"), "datum_revize", row_number, errors)
+        datum_plat = _parse_date(row.get("datum_platnosti"), "datum_platnosti", row_number, errors)
+        if not datum_rev or not datum_plat:
+            continue
+
+        if datum_plat < datum_rev:
+            errors.append(f"Řádek {row_number}: datum_platnosti je dříve než datum_revize.")
+            continue
+
+        umisteni = _normalize_text(row.get("umisteni"))
+        dedup_key = (nazev.lower(), umisteni.lower(), datum_plat.strftime("%Y-%m-%d"))
+        if dedup_key in db_keys:
+            errors.append(f"Řádek {row_number}: duplicita už existuje v databázi.")
+            continue
+        if dedup_key in import_keys:
+            errors.append(f"Řádek {row_number}: duplicita v importovaném souboru.")
+            continue
+
+        import_keys.add(dedup_key)
+        valid_rows.append({
+            "nazev": nazev,
+            "umisteni": umisteni,
+            "typ": _normalize_text(row.get("typ")) or "pravidelná",
+            "datum_revize": datum_rev.strftime("%Y-%m-%d"),
+            "datum_platnosti": datum_plat.strftime("%Y-%m-%d"),
+            "revizni_technik": _normalize_text(row.get("revizni_technik")),
+            "poznamka": _normalize_text(row.get("poznamka")),
+        })
+
+    return valid_rows, errors
+
 # ─── Konfigurace stránky ──────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Elektro revize",
+    page_title="RP ELECTRIC SOLUTION s.r.o.",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",  # na mobilu sidebar schovaný
@@ -79,11 +211,12 @@ mobil  = st.session_state.get("mobil", False)
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## ⚡ Elektro revize")
+    st.markdown("## ⚡ RP ELECTRIC SOLUTION s.r.o.")
     st.markdown("---")
     page = st.radio("Navigace", [
         "📋 Přehled",
         "➕ Přidat revizi",
+        "📥 Import z Excelu",
         "🔔 Odeslat upozornění",
         "⚙️ Nastavení e-mailu",
     ])
@@ -194,6 +327,50 @@ elif page == "➕ Přidat revizi":
             })
             st.success(f"✅ Revize **{nazev}** byla přidána!")
             st.balloons()
+
+
+# ─── Import z Excelu ─────────────────────────────────────────────────────────
+elif page == "📥 Import z Excelu":
+    st.markdown("# 📥 Import revizí z Excelu")
+    st.caption("Podporované formáty: .xlsx, .xls")
+    st.markdown(
+        "**Očekávané sloupce:** `nazev`, `datum_revize`, `datum_platnosti`  "+
+        "(volitelné: `umisteni`, `typ`, `revizni_technik`, `poznamka`)"
+    )
+
+    excel_file = st.file_uploader("Nahrajte Excel soubor", type=["xlsx", "xls"])
+
+    if excel_file is not None:
+        try:
+            df = pd.read_excel(excel_file)
+            if df.empty:
+                st.warning("Soubor je prázdný.")
+            else:
+                st.success(f"Načteno řádků: {len(df)}")
+                with st.expander("Náhled dat"):
+                    st.dataframe(df.head(20), use_container_width=True)
+
+                valid_rows, import_errors = _prepare_import_rows(df, db.get_all())
+
+                col_ok, col_err = st.columns(2)
+                col_ok.metric("Validní řádky", len(valid_rows))
+                col_err.metric("Chybné / duplicitní", len(import_errors))
+
+                if import_errors:
+                    with st.expander("Zobrazit chyby validace"):
+                        for err in import_errors:
+                            st.write(f"- {err}")
+
+                if valid_rows:
+                    if st.button("✅ Importovat validní řádky", use_container_width=True):
+                        for row_data in valid_rows:
+                            db.pridat(row_data)
+                        st.success(f"Import dokončen. Přidáno {len(valid_rows)} revizí.")
+                        st.rerun()
+                else:
+                    st.info("Žádné řádky k importu.")
+        except Exception as e:
+            st.error(f"Soubor se nepodařilo načíst: {e}")
 
 
 # ─── Odeslat upozornění ───────────────────────────────────────────────────────

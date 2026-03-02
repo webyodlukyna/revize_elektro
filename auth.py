@@ -111,7 +111,7 @@ def vyzaduj_prihlaseni() -> None:
       }
     </style>
     <div class="login-box">
-      <div class="login-title">⚡ Elektro revize</div>
+    <div class="login-title">⚡ RP ELECTRIC SOLUTION s.r.o.</div>
       <div class="login-sub">Přihlaste se pro přístup do aplikace</div>
     </div>
     """, unsafe_allow_html=True)

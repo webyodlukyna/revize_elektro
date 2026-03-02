@@ -215,7 +215,7 @@ def odeslat_email(cfg: dict, rows: list[dict]) -> None:
     html = _sestavit_html(rows, dnes)
 
     msg            = MIMEMultipart("alternative")
-    msg["Subject"] = f"⚠️ Upozornění na elektro revize – {dnes.strftime('%d.%m.%Y')}"
+    msg["Subject"] = f"⚠️ Upozornění na RP ELECTRIC SOLUTION s.r.o. – {dnes.strftime('%d.%m.%Y')}"
     msg["From"]    = cfg["smtp_user"]
     msg["To"]      = ", ".join(cfg["prijemci"])
     msg.attach(MIMEText(html, "html", "utf-8"))
