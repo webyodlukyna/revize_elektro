@@ -9,6 +9,7 @@ from datetime import date, timedelta
 import database as db
 import config as cfg_mod
 import auth
+import export
 
 # ─── Konfigurace stránky ──────────────────────────────────────────────────────
 st.set_page_config(
@@ -109,11 +110,27 @@ if page == "📋 Přehled":
     if not vsechny:
         st.info("Zatím žádné revize. Přidejte první pomocí menu vlevo.")
     else:
-        filtr = st.selectbox("Filtr", [
-            "Všechny",
-            "⚠️ Prošlé a blížící se (≤ 30 dní)",
-            "❌ Pouze prošlé",
-        ])
+        col_filtr, col_export = st.columns([3, 1])
+        with col_filtr:
+            filtr = st.selectbox("Filtr", [
+                "Všechny",
+                "⚠️ Prošlé a blížící se (≤ 30 dní)",
+                "❌ Pouze prošlé",
+            ])
+        with col_export:
+            st.markdown("<br>", unsafe_allow_html=True)
+            filtrovane = [r for r in vsechny if not (
+                (filtr == "⚠️ Prošlé a blížící se (≤ 30 dní)" and db.stav(r["datum_platnosti"])[2] > 30) or
+                (filtr == "❌ Pouze prošlé" and db.stav(r["datum_platnosti"])[2] >= 0)
+            )]
+            pdf_bytes = export.generuj_pdf(filtrovane, filtr)
+            st.download_button(
+                label="📄 Export PDF",
+                data=pdf_bytes,
+                file_name=f"revize_{dnes.strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
         for r in vsechny:
             stav_txt, badge_cls, zbyvá = db.stav(r["datum_platnosti"])
@@ -258,11 +275,9 @@ elif page == "⚙️ Nastavení e-mailu":
 
     st.markdown("---")
     st.markdown("""
-    ### Podpora
-lukyn.sifty@gmail.com
-    """)
-
-    st.markdown("---")
-    st.markdown("""
-    ### RP ELECTRIC SOLUTION s.r.o. | Revize bez kompromisů
+    ### 🌐 Nasazení na Streamlit Cloud (zdarma)
+    1. Nahrajte všechny `.py` soubory na **GitHub**
+    2. Jděte na [share.streamlit.io](https://share.streamlit.io)
+    3. Přihlaste se přes GitHub a klikněte **Deploy**
+    4. Heslo zadejte přes **Secrets** v dashboardu (ne přímo do kódu)
     """)
