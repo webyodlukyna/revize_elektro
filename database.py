@@ -62,6 +62,15 @@ def init_db() -> None:
                 upozorneni_odeslano INTEGER DEFAULT 0
             )
         """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                user_name  TEXT,
+                action     TEXT NOT NULL,
+                detail     TEXT
+            )
+        """)
 
 
 # ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -168,3 +177,50 @@ def stav(datum_platnosti: str) -> tuple[str, str, int]:
 
 def fmt_date(d: str) -> str:
     return datetime.strptime(d, "%Y-%m-%d").strftime("%d.%m.%Y") if d else "—"
+
+
+def log_akce(action: str, detail: str = "", user_name: str = "uživatel") -> None:
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if _je_supabase():
+        try:
+            _supabase_client().table("audit_log").insert({
+                "created_at": created_at,
+                "user_name": user_name,
+                "action": action,
+                "detail": detail,
+            }).execute()
+        except Exception:
+            return
+        return
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.execute(
+            "INSERT INTO audit_log (created_at, user_name, action, detail) VALUES (?, ?, ?, ?)",
+            (created_at, user_name, action, detail),
+        )
+
+
+def get_audit(limit: int = 200) -> list[dict]:
+    if _je_supabase():
+        try:
+            res = (
+                _supabase_client().table("audit_log")
+                .select("*")
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception:
+            return []
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]

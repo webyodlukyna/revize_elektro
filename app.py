@@ -5,6 +5,7 @@ Spuštění: streamlit run app.py
 
 import streamlit as st
 from datetime import date, timedelta
+import io
 import pandas as pd
 
 import database as db
@@ -204,6 +205,14 @@ st.markdown("""
 # ─── Přihlašování ────────────────────────────────────────────────────────────
 auth.vyzaduj_prihlaseni()
 
+
+def _current_user() -> str:
+    return st.session_state.get("uzivatel", "admin")
+
+
+def _is_admin() -> bool:
+    return st.session_state.get("role", "admin") == "admin"
+
 # ─── Inicializace ─────────────────────────────────────────────────────────────
 db.init_db()
 dnes   = date.today()
@@ -218,6 +227,7 @@ with st.sidebar:
         "➕ Přidat revizi",
         "📥 Import z Excelu",
         "🔔 Odeslat upozornění",
+        "🧾 Audit log",
         "⚙️ Nastavení e-mailu",
     ])
     st.markdown("---")
@@ -229,9 +239,11 @@ with st.sidebar:
     st.markdown(f"**Celkem revizí:** {len(vsechny)}")
     st.markdown(f"<span style='color:#e74c3c'>**Prošlé:** {prosle}</span>",    unsafe_allow_html=True)
     st.markdown(f"<span style='color:#e67e22'>**Do 7 dní:** {blizici}</span>", unsafe_allow_html=True)
+    st.markdown(f"👤 {_current_user()} ({st.session_state.get('role', 'admin')})")
 
     st.markdown("---")
     if st.button("🔒 Odhlásit se", use_container_width=True):
+        db.log_akce("logout", "Uživatel se odhlásil", _current_user())
         st.session_state["prihlaseno"] = False
         st.rerun()
 
@@ -243,6 +255,60 @@ if page == "📋 Přehled":
     if not vsechny:
         st.info("Zatím žádné revize. Přidejte první pomocí menu vlevo.")
     else:
+        st.markdown("### 📊 Dashboard")
+        pocet_proslych = 0
+        pocet_do_7 = 0
+        pocet_do_30 = 0
+
+        for row in vsechny:
+            _, _, zbyva = db.stav(row["datum_platnosti"])
+            if zbyva < 0:
+                pocet_proslych += 1
+            if zbyva <= 7:
+                pocet_do_7 += 1
+            if zbyva <= 30:
+                pocet_do_30 += 1
+
+        met1, met2, met3, met4 = st.columns(4)
+        met1.metric("Celkem revizí", len(vsechny))
+        met2.metric("Prošlé", pocet_proslych)
+        met3.metric("Do 7 dní", pocet_do_7)
+        met4.metric("Do 30 dní", pocet_do_30)
+
+        chart_col1, chart_col2 = st.columns(2)
+
+        with chart_col1:
+            monthly = []
+            horizon_end = dnes + timedelta(days=180)
+            for row in vsechny:
+                parsed = pd.to_datetime(row["datum_platnosti"], errors="coerce")
+                if pd.isna(parsed):
+                    continue
+                row_date = parsed.date()
+                if dnes <= row_date <= horizon_end:
+                    monthly.append(row_date.strftime("%Y-%m"))
+
+            if monthly:
+                month_counts = pd.Series(monthly).value_counts().sort_index()
+                month_df = month_counts.rename_axis("měsíc").reset_index(name="počet")
+                st.caption("Platnosti v následujících 6 měsících")
+                st.bar_chart(month_df.set_index("měsíc"))
+            else:
+                st.caption("Platnosti v následujících 6 měsících")
+                st.info("Žádná data pro graf.")
+
+        with chart_col2:
+            type_values = [(r.get("typ") or "Neuvedeno").strip() or "Neuvedeno" for r in vsechny]
+            if type_values:
+                type_counts = pd.Series(type_values).value_counts()
+                type_df = type_counts.rename_axis("typ").reset_index(name="počet")
+                st.caption("Rozložení podle typu revize")
+                st.bar_chart(type_df.set_index("typ"))
+            else:
+                st.caption("Rozložení podle typu revize")
+                st.info("Žádná data pro graf.")
+
+        st.markdown("---")
         vse_typy = sorted({(r.get("typ") or "").strip() for r in vsechny if (r.get("typ") or "").strip()})
         vse_technici = sorted({(r.get("revizni_technik") or "").strip() for r in vsechny if (r.get("revizni_technik") or "").strip()})
         vse_umisteni = sorted({(r.get("umisteni") or "").strip() for r in vsechny if (r.get("umisteni") or "").strip()})
@@ -298,10 +364,10 @@ if page == "📋 Přehled":
 
             filtrovane.append((r, stav_txt, badge_cls))
 
-        col_info, col_export = st.columns([3, 1])
+        col_info, col_export_pdf, col_export_csv, col_export_xlsx = st.columns([2, 1, 1, 1])
         with col_info:
             st.caption(f"Zobrazeno: {len(filtrovane)} z {len(vsechny)} revizí")
-        with col_export:
+        with col_export_pdf:
             pdf_bytes = export.generuj_pdf([item[0] for item in filtrovane], f"Pokročilý filtr: {filtr_stav}")
             st.download_button(
                 label="📄 Export PDF",
@@ -309,6 +375,46 @@ if page == "📋 Přehled":
                 file_name=f"revize_{dnes.strftime('%Y%m%d')}.pdf",
                 mime="application/pdf",
                 use_container_width=True,
+            )
+
+        export_rows = []
+        for r, stav_txt, _, in filtrovane:
+            export_rows.append({
+                "ID": r.get("id"),
+                "Název": r.get("nazev") or "",
+                "Umístění": r.get("umisteni") or "",
+                "Typ": r.get("typ") or "",
+                "Datum revize": db.fmt_date(r.get("datum_revize")) if r.get("datum_revize") else "",
+                "Platnost do": db.fmt_date(r.get("datum_platnosti")) if r.get("datum_platnosti") else "",
+                "Revizní technik": r.get("revizni_technik") or "",
+                "Poznámka": r.get("poznamka") or "",
+                "Stav": stav_txt,
+            })
+
+        export_df = pd.DataFrame(export_rows)
+
+        with col_export_csv:
+            csv_bytes = export_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+            st.download_button(
+                label="📄 Export CSV",
+                data=csv_bytes,
+                file_name=f"revize_{dnes.strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                disabled=export_df.empty,
+            )
+
+        with col_export_xlsx:
+            xlsx_buffer = io.BytesIO()
+            with pd.ExcelWriter(xlsx_buffer, engine="openpyxl") as writer:
+                export_df.to_excel(writer, index=False, sheet_name="Revize")
+            st.download_button(
+                label="📊 Export XLSX",
+                data=xlsx_buffer.getvalue(),
+                file_name=f"revize_{dnes.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                disabled=export_df.empty,
             )
 
         if not filtrovane:
@@ -328,8 +434,9 @@ if page == "📋 Přehled":
             </div>
             """, unsafe_allow_html=True)
 
-            if st.button("🗑️ Smazat", key=f"del_{r['id']}"):
+            if st.button("🗑️ Smazat", key=f"del_{r['id']}", disabled=not _is_admin()):
                 db.smazat(r["id"])
+                db.log_akce("delete_revize", f"Smazána revize: {r.get('nazev', '')}", _current_user())
                 st.rerun()
 
 
@@ -366,6 +473,7 @@ elif page == "➕ Přidat revizi":
                 "revizni_technik": technik,
                 "poznamka":        poznamka,
             })
+            db.log_akce("create_revize", f"Přidána revize: {nazev}", _current_user())
             st.success(f"✅ Revize **{nazev}** byla přidána!")
             st.balloons()
 
@@ -373,6 +481,10 @@ elif page == "➕ Přidat revizi":
 # ─── Import z Excelu ─────────────────────────────────────────────────────────
 elif page == "📥 Import z Excelu":
     st.markdown("# 📥 Import revizí z Excelu")
+    if not _is_admin():
+        st.warning("Tato sekce je dostupná pouze pro roli admin.")
+        st.stop()
+
     st.caption("Podporované formáty: .xlsx, .xls")
     st.markdown(
         "**Očekávané sloupce:** `nazev`, `datum_revize`, `datum_platnosti`  "+
@@ -406,6 +518,7 @@ elif page == "📥 Import z Excelu":
                     if st.button("✅ Importovat validní řádky", use_container_width=True):
                         for row_data in valid_rows:
                             db.pridat(row_data)
+                        db.log_akce("import_excel", f"Importováno řádků: {len(valid_rows)}", _current_user())
                         st.success(f"Import dokončen. Přidáno {len(valid_rows)} revizí.")
                         st.rerun()
                 else:
@@ -422,40 +535,122 @@ elif page == "🔔 Odeslat upozornění":
     if not cfg_mod.config_ok(config):
         st.warning("⚠️ Nejprve nastavte e-mail v sekci **⚙️ Nastavení e-mailu**.")
     else:
-        k_odeslani = db.get_k_odeslani(days=7)
-        limit_txt  = (dnes + timedelta(days=7)).strftime("%d.%m.%Y")
-        st.info(f"Zahrnuta zařízení s platností do **{limit_txt}** (7 dní).")
+        col_days, col_sent = st.columns([2, 1])
+        with col_days:
+            dny_horizont = st.slider("Horizont upozornění (dny)", min_value=1, max_value=90, value=7, step=1)
+        with col_sent:
+            zahrnout_odeslane = st.checkbox("Zahrnout i již odeslané", value=False)
+
+        limit_txt = (dnes + timedelta(days=dny_horizont)).strftime("%d.%m.%Y")
+        st.info(f"Zahrnuta zařízení s platností do **{limit_txt}** ({dny_horizont} dní).")
+
+        if zahrnout_odeslane:
+            k_odeslani = []
+            for r in db.get_all():
+                parsed = pd.to_datetime(str(r.get("datum_platnosti") or ""), errors="coerce")
+                if pd.isna(parsed):
+                    continue
+                if (parsed.date() - dnes).days <= dny_horizont:
+                    k_odeslani.append(r)
+        else:
+            k_odeslani = db.get_k_odeslani(days=dny_horizont)
 
         if not k_odeslani:
             st.success("✅ Žádné blížící se expirace. Vše v pořádku.")
         else:
-            st.warning(f"Nalezeno **{len(k_odeslani)}** revizí k upozornění.")
+            prosle = []
+            do_7 = []
+            do_horizontu = []
+
             for r in k_odeslani:
-                stav_txt, badge_cls, _ = db.stav(r["datum_platnosti"])
-                st.markdown(
-                    f"- **{r['nazev']}** — {db.fmt_date(r['datum_platnosti'])} &nbsp;"
-                    f"<span class='status-badge {badge_cls}'>{stav_txt}</span>",
-                    unsafe_allow_html=True,
-                )
+                _, _, zbyva = db.stav(r["datum_platnosti"])
+                if zbyva < 0:
+                    prosle.append(r)
+                elif zbyva <= 7:
+                    do_7.append(r)
+                else:
+                    do_horizontu.append(r)
+
+            st.warning(f"Nalezeno **{len(k_odeslani)}** revizí k upozornění.")
+            met1, met2, met3 = st.columns(3)
+            met1.metric("❌ Prošlé", len(prosle))
+            met2.metric("⚠️ Do 7 dní", len(do_7))
+            met3.metric(f"🔔 Do {dny_horizont} dní", len(do_horizontu))
+
+            for title, items in [
+                ("❌ Prošlé", prosle),
+                ("⚠️ Blížící se (do 7 dní)", do_7),
+                (f"🔔 Další v horizontu ({dny_horizont} dní)", do_horizontu),
+            ]:
+                if items:
+                    st.markdown(f"**{title}**")
+                    for r in items:
+                        stav_txt, badge_cls, _ = db.stav(r["datum_platnosti"])
+                        st.markdown(
+                            f"- **{r['nazev']}** — {db.fmt_date(r['datum_platnosti'])} &nbsp;"
+                            f"<span class='status-badge {badge_cls}'>{stav_txt}</span>",
+                            unsafe_allow_html=True,
+                        )
+
             st.markdown("")
-            if st.button("📧 Odeslat upozornění", use_container_width=True):
+            if st.button("📧 Odeslat upozornění", use_container_width=True, disabled=not _is_admin()):
                 try:
                     cfg_mod.odeslat_email(config, k_odeslani)
                     db.oznacit_odeslano([r["id"] for r in k_odeslani])
+                    db.log_akce("send_alert", f"Odesláno upozornění pro {len(k_odeslani)} revizí", _current_user())
                     st.success(f"✅ E-mail odeslán na: {', '.join(config['prijemci'])}")
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Chyba při odesílání: {e}")
 
-            if st.button("🔄 Resetovat 'odesláno'", use_container_width=True):
+            if st.button("🔄 Resetovat 'odesláno'", use_container_width=True, disabled=not _is_admin()):
                 db.reset_odeslano()
+                db.log_akce("reset_alert_flag", "Resetován příznak upozornění", _current_user())
                 st.info("Reset proveden — všechna upozornění lze odeslat znovu.")
                 st.rerun()
+
+
+# ─── Audit log ───────────────────────────────────────────────────────────────
+elif page == "🧾 Audit log":
+    st.markdown("# 🧾 Audit log")
+    if not _is_admin():
+        st.warning("Tato sekce je dostupná pouze pro roli admin.")
+        st.stop()
+
+    limit = st.slider("Počet záznamů", min_value=20, max_value=500, value=100, step=20)
+    logs = db.get_audit(limit=limit)
+
+    if not logs:
+        st.info("Audit log je zatím prázdný.")
+    else:
+        df_logs = pd.DataFrame(logs)
+        rename_map = {
+            "created_at": "Čas",
+            "user_name": "Uživatel",
+            "action": "Akce",
+            "detail": "Detail",
+        }
+        df_logs = df_logs.rename(columns=rename_map)
+        cols = [c for c in ["Čas", "Uživatel", "Akce", "Detail"] if c in df_logs.columns]
+        st.dataframe(df_logs[cols], use_container_width=True, hide_index=True)
+
+        csv_logs = df_logs.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+        st.download_button(
+            "📄 Export audit logu (CSV)",
+            data=csv_logs,
+            file_name=f"audit_log_{dnes.strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
 
 # ─── Nastavení e-mailu ────────────────────────────────────────────────────────
 elif page == "⚙️ Nastavení e-mailu":
     st.markdown("# ⚙️ Nastavení e-mailu")
+    if not _is_admin():
+        st.warning("Tato sekce je dostupná pouze pro roli admin.")
+        st.stop()
+
     config = cfg_mod.nacti_config()
 
     with st.form("nastaveni"):

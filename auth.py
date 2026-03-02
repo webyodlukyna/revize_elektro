@@ -64,6 +64,37 @@ def _nacti_hash() -> str | None:
     return None
 
 
+def _nacti_uzivatele() -> list[dict]:
+    """
+    Načte uživatele včetně role.
+    Podporované formáty:
+      - Legacy: {"password_hash": "..."} -> admin/admin
+      - Nový:   {"users": [{"username": "...", "password_hash": "...", "role": "..."}]}
+    """
+    # Streamlit Secrets
+    try:
+        users = st.secrets["auth"].get("users")
+        if users:
+            return list(users)
+    except Exception:
+        pass
+
+    hash_ = _nacti_hash()
+    if AUTH_CFG.exists():
+        data = json.loads(AUTH_CFG.read_text(encoding="utf-8"))
+        if isinstance(data.get("users"), list) and data["users"]:
+            return data["users"]
+
+    if hash_:
+        return [{
+            "username": "admin",
+            "password_hash": hash_,
+            "role": "admin",
+        }]
+
+    return []
+
+
 def uloz_hash(password_hash: str) -> None:
     """Uloží hash hesla do auth_config.json."""
     AUTH_CFG.write_text(
@@ -85,7 +116,7 @@ def vyzaduj_prihlaseni() -> None:
     if st.session_state.get("prihlaseno"):
         return  # Již přihlášen — pokračuj normálně
 
-    hash_ = _nacti_hash()
+    users = _nacti_uzivatele()
 
     st.markdown("""
     <style>
@@ -117,21 +148,29 @@ def vyzaduj_prihlaseni() -> None:
     """, unsafe_allow_html=True)
 
     # Heslo ještě není nastaveno
-    if hash_ is None:
+    if not users:
         st.warning("⚠️ Heslo aplikace není nastaveno.")
         st.markdown("Spusťte v terminálu:")
         st.code("python auth.py", language="bash")
-        st.markdown("nebo nastavte `[auth] password_hash` ve Streamlit Secrets.")
+        st.markdown("nebo nastavte `[auth] password_hash` / `[auth].users` ve Streamlit Secrets.")
         st.stop()
 
     # Přihlašovací formulář
     with st.form("login_form"):
+        usernames = [u.get("username", "") for u in users if u.get("username")]
+        if usernames:
+            username = st.selectbox("Uživatel", usernames, index=0)
+        else:
+            username = st.text_input("Uživatel", value="admin")
         heslo = st.text_input("Heslo", type="password", placeholder="Zadejte heslo")
         ok    = st.form_submit_button("🔓 Přihlásit se", use_container_width=True)
 
     if ok:
-        if over_heslo(heslo, hash_):
+        selected_user = next((u for u in users if u.get("username") == username), None)
+        if selected_user and over_heslo(heslo, selected_user.get("password_hash", "")):
             st.session_state["prihlaseno"] = True
+            st.session_state["uzivatel"] = selected_user.get("username", "admin")
+            st.session_state["role"] = selected_user.get("role", "user")
             st.rerun()
         else:
             st.error("❌ Nesprávné heslo.")
