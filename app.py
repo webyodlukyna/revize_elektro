@@ -258,18 +258,11 @@ elif page == "⚙️ Nastavení e-mailu":
 
     st.markdown("---")
     st.markdown("""
-    ### 💡 Tipy pro Gmail
-    1. Zapněte **Dvoufázové ověření** ve svém Google účtu
-    2. Vytvořte **App Password**: Účet Google → Zabezpečení → Hesla aplikací
-    3. Použijte App Password místo běžného hesla
-    4. SMTP server: `smtp.gmail.com`, port: `587`
+    ### Podpora
+lukyn.sifty@gmail.com
     """)
 
     st.markdown("---")
     st.markdown("""
-    ### 🌐 Nasazení na Streamlit Cloud (zdarma)
-    1. Nahrajte všechny `.py` soubory na **GitHub**
-    2. Jděte na [share.streamlit.io](https://share.streamlit.io)
-    3. Přihlaste se přes GitHub a klikněte **Deploy**
-    4. Heslo zadejte přes **Secrets** v dashboardu (ne přímo do kódu)
+    ### RP ELECTRIC SOLUTION s.r.o. | Revize bez kompromisů
     """)
