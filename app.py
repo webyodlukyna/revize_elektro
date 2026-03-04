@@ -15,7 +15,7 @@ import auth
 import export
 
 
-REQUIRED_IMPORT_FIELDS = ["nazev", "datum_revize", "datum_platnosti"]
+REQUIRED_IMPORT_FIELDS = ["zakaznik", "typ", "datum_revize", "datum_platnosti"]
 
 
 def _normalize_text(value) -> str:
@@ -60,6 +60,22 @@ def _parse_date(value, field_name: str, row_number: int, errors: list[str]):
 
 def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
     alias_map = {
+        "zakaznik": "zakaznik",
+        "zákazník": "zakaznik",
+        "customer": "zakaznik",
+        "customer_name": "zakaznik",
+        "typ_revize": "typ",
+        "typ revize": "typ",
+        "posledni_revize": "datum_revize",
+        "poslední_revize": "datum_revize",
+        "last_revision": "datum_revize",
+        "dalsi_revize": "datum_platnosti",
+        "další_revize": "datum_platnosti",
+        "next_revision": "datum_platnosti",
+        "lhuta": "lhuta",
+        "lhůta": "lhuta",
+        "stav": "stav_import",
+
         "nazev": "nazev",
         "name": "nazev",
         "asset_name": "nazev",
@@ -107,10 +123,6 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
         "poznámka": "poznamka",
         "note": "poznamka",
         "notes": "poznamka",
-        "customer": "zakaznik",
-        "customer_name": "zakaznik",
-        "zakaznik": "zakaznik",
-        "zákazník": "zakaznik",
         "zakaznik_jmeno": "zakaznik",
         "company": "spolecnost",
         "company_name": "spolecnost",
@@ -147,7 +159,7 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
         return [], [
             "Soubor neobsahuje povinné sloupce: "
             + ", ".join(missing)
-            + ". Povinné: nazev, datum_revize, datum_platnosti."
+            + ". Povinné: zákazník, typ revize, poslední revize, další revize."
         ]
 
     db_keys = {
@@ -165,10 +177,17 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
 
     for row_number, (_, row) in enumerate(normalized_df.iterrows(), start=2):
 
-        nazev = _normalize_text(row.get("nazev"))
-        if not nazev:
-            errors.append(f"Řádek {row_number}: chybí název.")
+        raw_zak_name = _normalize_text(row.get("zakaznik"))
+        if not raw_zak_name:
+            errors.append(f"Řádek {row_number}: chybí zákazník.")
             continue
+
+        raw_typ = _normalize_text(row.get("typ"))
+        if not raw_typ:
+            errors.append(f"Řádek {row_number}: chybí typ revize.")
+            continue
+
+        nazev = _normalize_text(row.get("nazev")) or raw_zak_name
 
         datum_rev = _parse_date(row.get("datum_revize"), "datum_revize", row_number, errors)
         datum_plat = _parse_date(row.get("datum_platnosti"), "datum_platnosti", row_number, errors)
@@ -182,8 +201,9 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
         umisteni = _normalize_text(row.get("umisteni"))
         raw_zak_id = _normalize_text(row.get("zakaznik_id"))
         raw_spo_id = _normalize_text(row.get("spolecnost_id"))
-        raw_zak_name = _normalize_text(row.get("zakaznik"))
         raw_spo_name = _normalize_text(row.get("spolecnost"))
+        raw_lhuta = _normalize_text(row.get("lhuta"))
+        raw_stav = _normalize_text(row.get("stav_import"))
 
         zakaznik_id = None
         spolecnost_id = None
@@ -242,11 +262,18 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
         valid_rows.append({
             "nazev": nazev,
             "umisteni": umisteni,
-            "typ": _normalize_text(row.get("typ")) or "pravidelná",
+            "typ": raw_typ,
             "datum_revize": datum_rev.strftime("%Y-%m-%d"),
             "datum_platnosti": datum_plat.strftime("%Y-%m-%d"),
             "revizni_technik": _normalize_text(row.get("revizni_technik")),
-            "poznamka": _normalize_text(row.get("poznamka")),
+            "poznamka": " | ".join(
+                part for part in [
+                    _normalize_text(row.get("poznamka")),
+                    f"Lhůta: {raw_lhuta}" if raw_lhuta else "",
+                    f"Stav (import): {raw_stav}" if raw_stav else "",
+                ]
+                if part
+            ),
             "zakaznik_id": zakaznik_id,
             "spolecnost_id": spolecnost_id,
         })
@@ -795,11 +822,9 @@ elif page == "📥 Import z Excelu":
 
     st.caption("Podporované formáty: .xlsx, .xls")
     st.markdown(
-        "**Povinné sloupce:** `nazev`, `datum_revize`, `datum_platnosti`  "
-        "(může být i např. `name`, `inspection_date`, `valid_to`).  "
-        "**Volitelné:** `umisteni`, `typ`, `revizni_technik`, `poznamka`, "
-        "`zakaznik`/`zakaznik_id`, `spolecnost`/`spolecnost_id`. "
-        "Neznámý `zakaznik` nebo `spolecnost` se při importu automaticky vytvoří."
+        "**Očekávané sloupce:** `zákazník`, `typ revize`, `poslední revize`, `lhůta`, `další revize`, `stav`.  "
+        "Podporované jsou i varianty bez diakritiky/underscore (např. `zakaznik`, `typ_revize`, `posledni_revize`, `dalsi_revize`).  "
+        "Neznámý `zákazník` nebo `společnost` se při importu automaticky vytvoří."
     )
 
     excel_file = st.file_uploader("Nahrajte Excel soubor", type=["xlsx", "xls"])
