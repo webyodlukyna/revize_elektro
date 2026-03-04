@@ -226,10 +226,29 @@ def _safe_date_input(value, fallback: date) -> date:
     parsed = pd.to_datetime(str(value or ""), errors="coerce")
     return fallback if pd.isna(parsed) else parsed.date()
 
+
+def _subject_label(row: dict) -> str:
+    zak = (row.get("zakaznik_jmeno") or "").strip()
+    spo = (row.get("spolecnost_nazev") or "").strip()
+    if zak and spo:
+        return f"{zak} / {spo}"
+    return zak or spo or "—"
+
+
+def _build_subject_options(zakaznici: list[dict], spolecnosti: list[dict]):
+    zak_options = ["— Nevybráno —"] + [f"{z.get('jmeno', '')} (ID {z.get('id')})" for z in zakaznici]
+    spo_options = ["— Nevybráno —"] + [f"{s.get('nazev', '')} (ID {s.get('id')})" for s in spolecnosti]
+
+    zak_map = {label: z.get("id") for label, z in zip(zak_options[1:], zakaznici)}
+    spo_map = {label: s.get("id") for label, s in zip(spo_options[1:], spolecnosti)}
+    return zak_options, spo_options, zak_map, spo_map
+
 # ─── Inicializace ─────────────────────────────────────────────────────────────
 db.init_db()
 dnes   = date.today()
 mobil  = st.session_state.get("mobil", False)
+zakaznici = db.get_zakaznici()
+spolecnosti = db.get_spolecnosti()
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -238,6 +257,7 @@ with st.sidebar:
     page = st.radio("Navigace", [
         "📋 Přehled",
         "➕ Přidat revizi",
+        "👥 Zákazníci a společnosti",
         "📥 Import z Excelu",
         "📎 Přílohy a historie",
         "📅 Kalendář (ICS)",
@@ -319,6 +339,8 @@ if page == "📋 Přehled":
                     (r.get("typ") or ""),
                     (r.get("revizni_technik") or ""),
                     (r.get("poznamka") or ""),
+                    (r.get("zakaznik_jmeno") or ""),
+                    (r.get("spolecnost_nazev") or ""),
                 ]).lower()
                 if hledat not in searchable:
                     continue
@@ -348,6 +370,8 @@ if page == "📋 Přehled":
                 "Datum revize": db.fmt_date(r.get("datum_revize")) if r.get("datum_revize") else "",
                 "Platnost do": db.fmt_date(r.get("datum_platnosti")) if r.get("datum_platnosti") else "",
                 "Revizní technik": r.get("revizni_technik") or "",
+                "Zákazník": r.get("zakaznik_jmeno") or "",
+                "Společnost": r.get("spolecnost_nazev") or "",
                 "Poznámka": r.get("poznamka") or "",
                 "Stav": stav_txt,
             })
@@ -387,6 +411,7 @@ if page == "📋 Přehled":
               <div class="nazev">{r['nazev']}</div>
               <div class="detail">
                 📍 {r.get('umisteni') or '—'} &nbsp;·&nbsp;
+                                👤 {_subject_label(r)} &nbsp;·&nbsp;
                 🔧 {r.get('typ') or '—'} &nbsp;·&nbsp;
                 👷 {r.get('revizni_technik') or '—'} &nbsp;·&nbsp;
                 📅 {db.fmt_date(r['datum_platnosti'])}
@@ -405,10 +430,18 @@ if page == "📋 Přehled":
 # ─── Přidat revizi ────────────────────────────────────────────────────────────
 elif page == "➕ Přidat revizi":
     st.markdown("# ➕ Přidat novou revizi")
+    zak_options, spo_options, zak_map, spo_map = _build_subject_options(zakaznici, spolecnosti)
 
     with st.form("nova_revize"):
         nazev    = st.text_input("Název zařízení / objektu *", placeholder="např. Rozvaděč RH-01")
         umisteni = st.text_input("Umístění", placeholder="např. Hala A, rozvodna")
+
+        col_sub_1, col_sub_2 = st.columns(2)
+        with col_sub_1:
+            zakaznik_label = st.selectbox("Zákazník", zak_options)
+        with col_sub_2:
+            spolecnost_label = st.selectbox("Společnost", spo_options)
+
         typ      = st.selectbox("Typ revize", ["pravidelná", "výchozí", "mimořádná", "následná"])
         technik  = st.text_input("Revizní technik", placeholder="Jméno technika")
 
@@ -425,6 +458,8 @@ elif page == "➕ Přidat revizi":
     if odeslat:
         if not nazev:
             st.error("Vyplňte název zařízení.")
+        elif zakaznik_label == "— Nevybráno —" and spolecnost_label == "— Nevybráno —":
+            st.error("Vyberte zákazníka nebo společnost.")
         else:
             db.pridat({
                 "nazev":           nazev,
@@ -434,10 +469,206 @@ elif page == "➕ Přidat revizi":
                 "datum_platnosti": datum_plat.strftime("%Y-%m-%d"),
                 "revizni_technik": technik,
                 "poznamka":        poznamka,
+                "zakaznik_id":     zak_map.get(zakaznik_label),
+                "spolecnost_id":   spo_map.get(spolecnost_label),
             })
             db.log_akce("create_revize", f"Přidána revize: {nazev}", _current_user())
             st.success(f"✅ Revize **{nazev}** byla přidána!")
             st.balloons()
+
+
+# ─── Zákazníci a společnosti ───────────────────────────────────────────────
+elif page == "👥 Zákazníci a společnosti":
+    st.markdown("# 👥 Zákazníci a společnosti")
+
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        st.markdown("### ➕ Nový zákazník")
+        with st.form("novy_zakaznik"):
+            z_jmeno = st.text_input("Jméno zákazníka *", placeholder="např. Jan Novák")
+            z_telefon = st.text_input("Telefon", placeholder="+420...")
+            z_email = st.text_input("E-mail")
+            z_adresa = st.text_input("Adresa")
+            z_poznamka = st.text_area("Poznámka", height=80)
+            ulozit_z = st.form_submit_button("💾 Uložit zákazníka", use_container_width=True, disabled=not _is_admin())
+
+        if ulozit_z:
+            if not z_jmeno.strip():
+                st.error("Jméno zákazníka je povinné.")
+            else:
+                db.pridat_zakaznika({
+                    "jmeno": z_jmeno,
+                    "telefon": z_telefon,
+                    "email": z_email,
+                    "adresa": z_adresa,
+                    "poznamka": z_poznamka,
+                })
+                db.log_akce("create_zakaznik", f"Přidán zákazník: {z_jmeno.strip()}", _current_user())
+                st.success("Zákazník uložen.")
+                st.rerun()
+
+    with col_right:
+        st.markdown("### ➕ Nová společnost")
+        with st.form("nova_spolecnost"):
+            s_nazev = st.text_input("Název společnosti *", placeholder="např. ACME s.r.o.")
+            s_ico = st.text_input("IČO")
+            s_kontakt = st.text_input("Kontaktní osoba")
+            s_telefon = st.text_input("Telefon", placeholder="+420...")
+            s_email = st.text_input("E-mail")
+            s_adresa = st.text_input("Adresa")
+            s_poznamka = st.text_area("Poznámka", height=80)
+            ulozit_s = st.form_submit_button("💾 Uložit společnost", use_container_width=True, disabled=not _is_admin())
+
+        if ulozit_s:
+            if not s_nazev.strip():
+                st.error("Název společnosti je povinný.")
+            else:
+                db.pridat_spolecnost({
+                    "nazev": s_nazev,
+                    "ico": s_ico,
+                    "kontakt": s_kontakt,
+                    "telefon": s_telefon,
+                    "email": s_email,
+                    "adresa": s_adresa,
+                    "poznamka": s_poznamka,
+                })
+                db.log_akce("create_spolecnost", f"Přidána společnost: {s_nazev.strip()}", _current_user())
+                st.success("Společnost uložena.")
+                st.rerun()
+
+    st.markdown("---")
+    st.markdown("### Seznam zákazníků")
+    if zakaznici:
+        st.dataframe(
+            pd.DataFrame([{
+                "ID": z.get("id"),
+                "Jméno": z.get("jmeno") or "",
+                "Telefon": z.get("telefon") or "",
+                "E-mail": z.get("email") or "",
+                "Adresa": z.get("adresa") or "",
+            } for z in zakaznici]),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("Zatím nejsou evidováni žádní zákazníci.")
+
+    st.markdown("### Seznam společností")
+    if spolecnosti:
+        st.dataframe(
+            pd.DataFrame([{
+                "ID": s.get("id"),
+                "Název": s.get("nazev") or "",
+                "IČO": s.get("ico") or "",
+                "Kontakt": s.get("kontakt") or "",
+                "Telefon": s.get("telefon") or "",
+                "E-mail": s.get("email") or "",
+            } for s in spolecnosti]),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("Zatím nejsou evidovány žádné společnosti.")
+
+    st.markdown("---")
+    st.markdown("### ✏️ Upravit / 🗑️ Smazat zákazníka")
+    if zakaznici:
+        zak_edit_options = [f"{z.get('id')} · {z.get('jmeno') or 'Bez jména'}" for z in zakaznici]
+        selected_zak_edit = st.selectbox("Vyberte zákazníka", zak_edit_options)
+        selected_zak_id = int(selected_zak_edit.split(" · ")[0])
+        selected_zak = next((z for z in zakaznici if int(z.get("id", 0)) == selected_zak_id), None)
+
+        if selected_zak:
+            with st.form(f"edit_zakaznik_{selected_zak_id}"):
+                ez_jmeno = st.text_input("Jméno zákazníka *", value=selected_zak.get("jmeno") or "")
+                ez_telefon = st.text_input("Telefon", value=selected_zak.get("telefon") or "")
+                ez_email = st.text_input("E-mail", value=selected_zak.get("email") or "")
+                ez_adresa = st.text_input("Adresa", value=selected_zak.get("adresa") or "")
+                ez_poznamka = st.text_area("Poznámka", value=selected_zak.get("poznamka") or "", height=80)
+                ulozit_ez = st.form_submit_button("💾 Uložit změny zákazníka", use_container_width=True, disabled=not _is_admin())
+
+            if ulozit_ez:
+                if not ez_jmeno.strip():
+                    st.error("Jméno zákazníka je povinné.")
+                else:
+                    db.update_zakaznik(selected_zak_id, {
+                        "jmeno": ez_jmeno,
+                        "telefon": ez_telefon,
+                        "email": ez_email,
+                        "adresa": ez_adresa,
+                        "poznamka": ez_poznamka,
+                    })
+                    db.log_akce("update_zakaznik", f"Upraven zákazník: {ez_jmeno.strip()} (ID {selected_zak_id})", _current_user())
+                    st.success("Zákazník byl upraven.")
+                    st.rerun()
+
+            linked_zak = db.pocet_revizi_pro_zakaznika(selected_zak_id)
+            if linked_zak > 0:
+                st.info(f"Zákazník je navázaný na {linked_zak} revizí, mazání je blokováno.")
+            if st.button(
+                "🗑️ Smazat zákazníka",
+                key=f"delete_zakaznik_{selected_zak_id}",
+                use_container_width=True,
+                disabled=(not _is_admin()) or linked_zak > 0,
+            ):
+                db.smazat_zakaznika(selected_zak_id)
+                db.log_akce("delete_zakaznik", f"Smazán zákazník ID {selected_zak_id}", _current_user())
+                st.success("Zákazník byl smazán.")
+                st.rerun()
+    else:
+        st.caption("Nejprve vytvořte zákazníka.")
+
+    st.markdown("### ✏️ Upravit / 🗑️ Smazat společnost")
+    if spolecnosti:
+        spo_edit_options = [f"{s.get('id')} · {s.get('nazev') or 'Bez názvu'}" for s in spolecnosti]
+        selected_spo_edit = st.selectbox("Vyberte společnost", spo_edit_options)
+        selected_spo_id = int(selected_spo_edit.split(" · ")[0])
+        selected_spo = next((s for s in spolecnosti if int(s.get("id", 0)) == selected_spo_id), None)
+
+        if selected_spo:
+            with st.form(f"edit_spolecnost_{selected_spo_id}"):
+                es_nazev = st.text_input("Název společnosti *", value=selected_spo.get("nazev") or "")
+                es_ico = st.text_input("IČO", value=selected_spo.get("ico") or "")
+                es_kontakt = st.text_input("Kontaktní osoba", value=selected_spo.get("kontakt") or "")
+                es_telefon = st.text_input("Telefon", value=selected_spo.get("telefon") or "")
+                es_email = st.text_input("E-mail", value=selected_spo.get("email") or "")
+                es_adresa = st.text_input("Adresa", value=selected_spo.get("adresa") or "")
+                es_poznamka = st.text_area("Poznámka", value=selected_spo.get("poznamka") or "", height=80)
+                ulozit_es = st.form_submit_button("💾 Uložit změny společnosti", use_container_width=True, disabled=not _is_admin())
+
+            if ulozit_es:
+                if not es_nazev.strip():
+                    st.error("Název společnosti je povinný.")
+                else:
+                    db.update_spolecnost(selected_spo_id, {
+                        "nazev": es_nazev,
+                        "ico": es_ico,
+                        "kontakt": es_kontakt,
+                        "telefon": es_telefon,
+                        "email": es_email,
+                        "adresa": es_adresa,
+                        "poznamka": es_poznamka,
+                    })
+                    db.log_akce("update_spolecnost", f"Upravena společnost: {es_nazev.strip()} (ID {selected_spo_id})", _current_user())
+                    st.success("Společnost byla upravena.")
+                    st.rerun()
+
+            linked_spo = db.pocet_revizi_pro_spolecnost(selected_spo_id)
+            if linked_spo > 0:
+                st.info(f"Společnost je navázaná na {linked_spo} revizí, mazání je blokováno.")
+            if st.button(
+                "🗑️ Smazat společnost",
+                key=f"delete_spolecnost_{selected_spo_id}",
+                use_container_width=True,
+                disabled=(not _is_admin()) or linked_spo > 0,
+            ):
+                db.smazat_spolecnost(selected_spo_id)
+                db.log_akce("delete_spolecnost", f"Smazána společnost ID {selected_spo_id}", _current_user())
+                st.success("Společnost byla smazána.")
+                st.rerun()
+    else:
+        st.caption("Nejprve vytvořte společnost.")
 
 
 # ─── Import z Excelu ─────────────────────────────────────────────────────────
@@ -497,7 +728,10 @@ elif page == "📎 Přílohy a historie":
         st.info("Nejsou dostupné žádné revize.")
         st.stop()
 
-    labels = [f"{r['id']} · {r.get('nazev') or 'Bez názvu'} · {db.fmt_date(r['datum_platnosti'])}" for r in vsechny]
+    labels = [
+        f"{r['id']} · {r.get('nazev') or 'Bez názvu'} · {_subject_label(r)} · {db.fmt_date(r['datum_platnosti'])}"
+        for r in vsechny
+    ]
     selected_label = st.selectbox("Vyberte revizi", labels)
     selected_id = int(selected_label.split(" · ")[0])
     selected = next((r for r in vsechny if r["id"] == selected_id), None)
@@ -510,10 +744,41 @@ elif page == "📎 Přílohy a historie":
     typ_options = ["pravidelná", "výchozí", "mimořádná", "následná"]
     selected_typ = str(selected.get("typ") or "")
     typ_index = typ_options.index(selected_typ) if selected_typ in typ_options else 0
+    zak_options, spo_options, zak_map, spo_map = _build_subject_options(zakaznici, spolecnosti)
+
+    selected_zak_id = selected.get("zakaznik_id")
+    selected_spo_id = selected.get("spolecnost_id")
+
+    selected_zak_label = "— Nevybráno —"
+    selected_spo_label = "— Nevybráno —"
+
+    for label, value in zak_map.items():
+        if value == selected_zak_id:
+            selected_zak_label = label
+            break
+    for label, value in spo_map.items():
+        if value == selected_spo_id:
+            selected_spo_label = label
+            break
 
     with st.form(f"edit_revize_{selected_id}"):
         e_nazev = st.text_input("Název", value=selected.get("nazev") or "")
         e_umisteni = st.text_input("Umístění", value=selected.get("umisteni") or "")
+
+        ec1, ec2 = st.columns(2)
+        with ec1:
+            e_zakaznik_label = st.selectbox(
+                "Zákazník",
+                zak_options,
+                index=zak_options.index(selected_zak_label) if selected_zak_label in zak_options else 0,
+            )
+        with ec2:
+            e_spolecnost_label = st.selectbox(
+                "Společnost",
+                spo_options,
+                index=spo_options.index(selected_spo_label) if selected_spo_label in spo_options else 0,
+            )
+
         e_typ = st.selectbox(
             "Typ revize",
             typ_options,
@@ -539,6 +804,8 @@ elif page == "📎 Přílohy a historie":
     if ulozit_edit:
         if not e_nazev.strip():
             st.error("Název je povinný.")
+        elif e_zakaznik_label == "— Nevybráno —" and e_spolecnost_label == "— Nevybráno —":
+            st.error("Vyberte zákazníka nebo společnost.")
         elif e_datum_plat < e_datum_rev:
             st.error("Datum platnosti nesmí být dříve než datum revize.")
         else:
@@ -551,6 +818,8 @@ elif page == "📎 Přílohy a historie":
                 "datum_platnosti": e_datum_plat.strftime("%Y-%m-%d"),
                 "revizni_technik": e_technik.strip(),
                 "poznamka": e_poznamka,
+                "zakaznik_id": zak_map.get(e_zakaznik_label),
+                "spolecnost_id": spo_map.get(e_spolecnost_label),
             }
             db.update_revize(selected_id, new_data)
             db.pridej_historii(selected_id, "after_update", {"id": selected_id, **new_data}, _current_user())

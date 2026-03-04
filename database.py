@@ -64,6 +64,30 @@ def init_db() -> None:
             )
         """)
         con.execute("""
+            CREATE TABLE IF NOT EXISTS zakaznici (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                jmeno       TEXT NOT NULL,
+                telefon     TEXT,
+                email       TEXT,
+                adresa      TEXT,
+                poznamka    TEXT,
+                created_at  TEXT NOT NULL
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS spolecnosti (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nazev       TEXT NOT NULL,
+                ico         TEXT,
+                kontakt     TEXT,
+                telefon     TEXT,
+                email       TEXT,
+                adresa      TEXT,
+                poznamka    TEXT,
+                created_at  TEXT NOT NULL
+            )
+        """)
+        con.execute("""
             CREATE TABLE IF NOT EXISTS revize_prilohy (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 revize_id   INTEGER NOT NULL,
@@ -95,6 +119,12 @@ def init_db() -> None:
             )
         """)
 
+        cols = {row[1] for row in con.execute("PRAGMA table_info(revize)").fetchall()}
+        if "zakaznik_id" not in cols:
+            con.execute("ALTER TABLE revize ADD COLUMN zakaznik_id INTEGER")
+        if "spolecnost_id" not in cols:
+            con.execute("ALTER TABLE revize ADD COLUMN spolecnost_id INTEGER")
+
 
 # ─── CRUD ─────────────────────────────────────────────────────────────────────
 
@@ -106,21 +136,48 @@ def get_all() -> list[dict]:
     import sqlite3
     with sqlite3.connect("revize_elektro.db") as con:
         con.row_factory = sqlite3.Row
-        rows = con.execute("SELECT * FROM revize ORDER BY datum_platnosti").fetchall()
+        rows = con.execute("""
+            SELECT
+                r.*,
+                z.jmeno AS zakaznik_jmeno,
+                s.nazev AS spolecnost_nazev
+            FROM revize r
+            LEFT JOIN zakaznici z ON z.id = r.zakaznik_id
+            LEFT JOIN spolecnosti s ON s.id = r.spolecnost_id
+            ORDER BY r.datum_platnosti
+        """).fetchall()
     return [dict(r) for r in rows]
 
 
 def pridat(data: dict) -> None:
+    payload = {
+        "nazev": data.get("nazev", ""),
+        "umisteni": data.get("umisteni", ""),
+        "typ": data.get("typ", ""),
+        "datum_revize": data.get("datum_revize", ""),
+        "datum_platnosti": data.get("datum_platnosti", ""),
+        "revizni_technik": data.get("revizni_technik", ""),
+        "poznamka": data.get("poznamka", ""),
+        "zakaznik_id": data.get("zakaznik_id"),
+        "spolecnost_id": data.get("spolecnost_id"),
+    }
+
     if _je_supabase():
-        _supabase_client().table("revize").insert(data).execute()
+        _supabase_client().table("revize").insert(payload).execute()
         return
 
     import sqlite3
     with sqlite3.connect("revize_elektro.db") as con:
         con.execute("""
-            INSERT INTO revize (nazev, umisteni, typ, datum_revize, datum_platnosti, revizni_technik, poznamka)
-            VALUES (:nazev, :umisteni, :typ, :datum_revize, :datum_platnosti, :revizni_technik, :poznamka)
-        """, data)
+            INSERT INTO revize (
+                nazev, umisteni, typ, datum_revize, datum_platnosti,
+                revizni_technik, poznamka, zakaznik_id, spolecnost_id
+            )
+            VALUES (
+                :nazev, :umisteni, :typ, :datum_revize, :datum_platnosti,
+                :revizni_technik, :poznamka, :zakaznik_id, :spolecnost_id
+            )
+        """, payload)
 
 
 def smazat(rid: int) -> None:
@@ -217,9 +274,217 @@ def update_revize(rid: int, data: dict) -> None:
                 datum_revize = :datum_revize,
                 datum_platnosti = :datum_platnosti,
                 revizni_technik = :revizni_technik,
-                poznamka = :poznamka
+                poznamka = :poznamka,
+                zakaznik_id = :zakaznik_id,
+                spolecnost_id = :spolecnost_id
             WHERE id = :id
         """, {**data, "id": rid})
+
+
+def get_zakaznici() -> list[dict]:
+    if _je_supabase():
+        try:
+            res = _supabase_client().table("zakaznici").select("*").order("jmeno").execute()
+            return res.data or []
+        except Exception:
+            return []
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute("SELECT * FROM zakaznici ORDER BY jmeno").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_spolecnosti() -> list[dict]:
+    if _je_supabase():
+        try:
+            res = _supabase_client().table("spolecnosti").select("*").order("nazev").execute()
+            return res.data or []
+        except Exception:
+            return []
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.row_factory = sqlite3.Row
+        rows = con.execute("SELECT * FROM spolecnosti ORDER BY nazev").fetchall()
+    return [dict(r) for r in rows]
+
+
+def pridat_zakaznika(data: dict) -> None:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    payload = {
+        "jmeno": data.get("jmeno", "").strip(),
+        "telefon": data.get("telefon", "").strip(),
+        "email": data.get("email", "").strip(),
+        "adresa": data.get("adresa", "").strip(),
+        "poznamka": data.get("poznamka", "").strip(),
+        "created_at": ts,
+    }
+
+    if _je_supabase():
+        _supabase_client().table("zakaznici").insert(payload).execute()
+        return
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.execute(
+            """
+            INSERT INTO zakaznici (jmeno, telefon, email, adresa, poznamka, created_at)
+            VALUES (:jmeno, :telefon, :email, :adresa, :poznamka, :created_at)
+            """,
+            payload,
+        )
+
+
+def pridat_spolecnost(data: dict) -> None:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    payload = {
+        "nazev": data.get("nazev", "").strip(),
+        "ico": data.get("ico", "").strip(),
+        "kontakt": data.get("kontakt", "").strip(),
+        "telefon": data.get("telefon", "").strip(),
+        "email": data.get("email", "").strip(),
+        "adresa": data.get("adresa", "").strip(),
+        "poznamka": data.get("poznamka", "").strip(),
+        "created_at": ts,
+    }
+
+    if _je_supabase():
+        _supabase_client().table("spolecnosti").insert(payload).execute()
+        return
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.execute(
+            """
+            INSERT INTO spolecnosti (nazev, ico, kontakt, telefon, email, adresa, poznamka, created_at)
+            VALUES (:nazev, :ico, :kontakt, :telefon, :email, :adresa, :poznamka, :created_at)
+            """,
+            payload,
+        )
+
+
+def update_zakaznik(zakaznik_id: int, data: dict) -> None:
+    payload = {
+        "id": zakaznik_id,
+        "jmeno": data.get("jmeno", "").strip(),
+        "telefon": data.get("telefon", "").strip(),
+        "email": data.get("email", "").strip(),
+        "adresa": data.get("adresa", "").strip(),
+        "poznamka": data.get("poznamka", "").strip(),
+    }
+
+    if _je_supabase():
+        _supabase_client().table("zakaznici").update({
+            "jmeno": payload["jmeno"],
+            "telefon": payload["telefon"],
+            "email": payload["email"],
+            "adresa": payload["adresa"],
+            "poznamka": payload["poznamka"],
+        }).eq("id", zakaznik_id).execute()
+        return
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.execute(
+            """
+            UPDATE zakaznici
+            SET jmeno = :jmeno,
+                telefon = :telefon,
+                email = :email,
+                adresa = :adresa,
+                poznamka = :poznamka
+            WHERE id = :id
+            """,
+            payload,
+        )
+
+
+def update_spolecnost(spolecnost_id: int, data: dict) -> None:
+    payload = {
+        "id": spolecnost_id,
+        "nazev": data.get("nazev", "").strip(),
+        "ico": data.get("ico", "").strip(),
+        "kontakt": data.get("kontakt", "").strip(),
+        "telefon": data.get("telefon", "").strip(),
+        "email": data.get("email", "").strip(),
+        "adresa": data.get("adresa", "").strip(),
+        "poznamka": data.get("poznamka", "").strip(),
+    }
+
+    if _je_supabase():
+        _supabase_client().table("spolecnosti").update({
+            "nazev": payload["nazev"],
+            "ico": payload["ico"],
+            "kontakt": payload["kontakt"],
+            "telefon": payload["telefon"],
+            "email": payload["email"],
+            "adresa": payload["adresa"],
+            "poznamka": payload["poznamka"],
+        }).eq("id", spolecnost_id).execute()
+        return
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.execute(
+            """
+            UPDATE spolecnosti
+            SET nazev = :nazev,
+                ico = :ico,
+                kontakt = :kontakt,
+                telefon = :telefon,
+                email = :email,
+                adresa = :adresa,
+                poznamka = :poznamka
+            WHERE id = :id
+            """,
+            payload,
+        )
+
+
+def pocet_revizi_pro_zakaznika(zakaznik_id: int) -> int:
+    if _je_supabase():
+        res = _supabase_client().table("revize").select("id", count="exact").eq("zakaznik_id", zakaznik_id).execute()
+        return int(res.count or 0)
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        row = con.execute("SELECT COUNT(*) FROM revize WHERE zakaznik_id = ?", (zakaznik_id,)).fetchone()
+    return int(row[0] if row else 0)
+
+
+def pocet_revizi_pro_spolecnost(spolecnost_id: int) -> int:
+    if _je_supabase():
+        res = _supabase_client().table("revize").select("id", count="exact").eq("spolecnost_id", spolecnost_id).execute()
+        return int(res.count or 0)
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        row = con.execute("SELECT COUNT(*) FROM revize WHERE spolecnost_id = ?", (spolecnost_id,)).fetchone()
+    return int(row[0] if row else 0)
+
+
+def smazat_zakaznika(zakaznik_id: int) -> None:
+    if _je_supabase():
+        _supabase_client().table("zakaznici").delete().eq("id", zakaznik_id).execute()
+        return
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.execute("DELETE FROM zakaznici WHERE id = ?", (zakaznik_id,))
+
+
+def smazat_spolecnost(spolecnost_id: int) -> None:
+    if _je_supabase():
+        _supabase_client().table("spolecnosti").delete().eq("id", spolecnost_id).execute()
+        return
+
+    import sqlite3
+    with sqlite3.connect("revize_elektro.db") as con:
+        con.execute("DELETE FROM spolecnosti WHERE id = ?", (spolecnost_id,))
 
 
 def get_prilohy(revize_id: int) -> list[dict]:
