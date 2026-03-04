@@ -61,21 +61,66 @@ def _parse_date(value, field_name: str, row_number: int, errors: list[str]):
 def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
     alias_map = {
         "nazev": "nazev",
+        "name": "nazev",
+        "asset_name": "nazev",
+        "device_name": "nazev",
         "nazev_zarizeni": "nazev",
+        "nazev_zařízení": "nazev",
         "zarizeni": "nazev",
+        "zařízení": "nazev",
         "objekt": "nazev",
+        "objekt_nazev": "nazev",
         "umisteni": "umisteni",
+        "umístění": "umisteni",
+        "location": "umisteni",
+        "misto": "umisteni",
+        "místo": "umisteni",
         "typ": "typ",
+        "type": "typ",
+        "category": "typ",
         "typ_revize": "typ",
         "datum_revize": "datum_revize",
+        "datum": "datum_revize",
+        "date": "datum_revize",
+        "revision_date": "datum_revize",
+        "inspection_date": "datum_revize",
         "provedena": "datum_revize",
+        "provedeno": "datum_revize",
         "datum_provedeni": "datum_revize",
+        "datum_provedení": "datum_revize",
         "datum_platnosti": "datum_platnosti",
+        "platnost_do": "datum_platnosti",
+        "platnost_do_data": "datum_platnosti",
+        "valid_to": "datum_platnosti",
+        "expiry_date": "datum_platnosti",
+        "expiration_date": "datum_platnosti",
         "platnost": "datum_platnosti",
         "pristi_revize": "datum_platnosti",
+        "pristi_kontrola": "datum_platnosti",
+        "příští_revize": "datum_platnosti",
         "revizni_technik": "revizni_technik",
+        "revizní_technik": "revizni_technik",
         "technik": "revizni_technik",
+        "technician": "revizni_technik",
+        "inspector": "revizni_technik",
         "poznamka": "poznamka",
+        "poznámka": "poznamka",
+        "note": "poznamka",
+        "notes": "poznamka",
+        "customer": "zakaznik",
+        "customer_name": "zakaznik",
+        "zakaznik": "zakaznik",
+        "zákazník": "zakaznik",
+        "zakaznik_jmeno": "zakaznik",
+        "company": "spolecnost",
+        "company_name": "spolecnost",
+        "spolecnost": "spolecnost",
+        "společnost": "spolecnost",
+        "spolecnost_nazev": "spolecnost",
+        "zakaznik_id": "zakaznik_id",
+        "customer_id": "zakaznik_id",
+        "spolecnost_id": "spolecnost_id",
+        "company_id": "spolecnost_id",
     }
 
     rename_map = {}
@@ -85,6 +130,17 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
             rename_map[col] = alias_map[normalized]
 
     normalized_df = df.rename(columns=rename_map)
+
+    zakaznik_map = {
+        str(z.get("jmeno") or "").strip().lower(): z.get("id")
+        for z in db.get_zakaznici()
+        if str(z.get("jmeno") or "").strip()
+    }
+    spolecnost_map = {
+        str(s.get("nazev") or "").strip().lower(): s.get("id")
+        for s in db.get_spolecnosti()
+        if str(s.get("nazev") or "").strip()
+    }
 
     missing = [field for field in REQUIRED_IMPORT_FIELDS if field not in normalized_df.columns]
     if missing:
@@ -124,6 +180,56 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
             continue
 
         umisteni = _normalize_text(row.get("umisteni"))
+        raw_zak_id = _normalize_text(row.get("zakaznik_id"))
+        raw_spo_id = _normalize_text(row.get("spolecnost_id"))
+        raw_zak_name = _normalize_text(row.get("zakaznik"))
+        raw_spo_name = _normalize_text(row.get("spolecnost"))
+
+        zakaznik_id = None
+        spolecnost_id = None
+
+        if raw_zak_id:
+            try:
+                zakaznik_id = int(raw_zak_id)
+            except Exception:
+                errors.append(f"Řádek {row_number}: neplatné zakaznik_id ({raw_zak_id}).")
+                continue
+        elif raw_zak_name:
+            zak_name_key = raw_zak_name.strip().lower()
+            zakaznik_id = zakaznik_map.get(zak_name_key)
+            if zakaznik_id is None:
+                db.pridat_zakaznika({"jmeno": raw_zak_name})
+                refreshed_zakaznici = db.get_zakaznici()
+                for z_item in refreshed_zakaznici:
+                    key = str(z_item.get("jmeno") or "").strip().lower()
+                    if key:
+                        zakaznik_map[key] = z_item.get("id")
+                zakaznik_id = zakaznik_map.get(zak_name_key)
+                if zakaznik_id is None:
+                    errors.append(f"Řádek {row_number}: zákazník '{raw_zak_name}' se nepodařilo vytvořit.")
+                    continue
+
+        if raw_spo_id:
+            try:
+                spolecnost_id = int(raw_spo_id)
+            except Exception:
+                errors.append(f"Řádek {row_number}: neplatné spolecnost_id ({raw_spo_id}).")
+                continue
+        elif raw_spo_name:
+            spo_name_key = raw_spo_name.strip().lower()
+            spolecnost_id = spolecnost_map.get(spo_name_key)
+            if spolecnost_id is None:
+                db.pridat_spolecnost({"nazev": raw_spo_name})
+                refreshed_spolecnosti = db.get_spolecnosti()
+                for s_item in refreshed_spolecnosti:
+                    key = str(s_item.get("nazev") or "").strip().lower()
+                    if key:
+                        spolecnost_map[key] = s_item.get("id")
+                spolecnost_id = spolecnost_map.get(spo_name_key)
+                if spolecnost_id is None:
+                    errors.append(f"Řádek {row_number}: společnost '{raw_spo_name}' se nepodařilo vytvořit.")
+                    continue
+
         dedup_key = (nazev.lower(), umisteni.lower(), datum_plat.strftime("%Y-%m-%d"))
         if dedup_key in db_keys:
             errors.append(f"Řádek {row_number}: duplicita už existuje v databázi.")
@@ -141,6 +247,8 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
             "datum_platnosti": datum_plat.strftime("%Y-%m-%d"),
             "revizni_technik": _normalize_text(row.get("revizni_technik")),
             "poznamka": _normalize_text(row.get("poznamka")),
+            "zakaznik_id": zakaznik_id,
+            "spolecnost_id": spolecnost_id,
         })
 
     return valid_rows, errors
@@ -680,8 +788,11 @@ elif page == "📥 Import z Excelu":
 
     st.caption("Podporované formáty: .xlsx, .xls")
     st.markdown(
-        "**Očekávané sloupce:** `nazev`, `datum_revize`, `datum_platnosti`  "+
-        "(volitelné: `umisteni`, `typ`, `revizni_technik`, `poznamka`)"
+        "**Povinné sloupce:** `nazev`, `datum_revize`, `datum_platnosti`  "
+        "(může být i např. `name`, `inspection_date`, `valid_to`).  "
+        "**Volitelné:** `umisteni`, `typ`, `revizni_technik`, `poznamka`, "
+        "`zakaznik`/`zakaznik_id`, `spolecnost`/`spolecnost_id`. "
+        "Neznámý `zakaznik` nebo `spolecnost` se při importu automaticky vytvoří."
     )
 
     excel_file = st.file_uploader("Nahrajte Excel soubor", type=["xlsx", "xls"])
