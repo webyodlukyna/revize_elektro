@@ -62,6 +62,34 @@ st.markdown("""
   }
   .revize-karta .nazev { font-weight:600; font-size:1rem; margin-bottom:4px; }
   .revize-karta .detail { font-size:0.82rem; color:#888; margin-bottom:6px; }
+    .revize-karta .hlavni-info {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:10px;
+        margin:8px 0;
+        flex-wrap:wrap;
+    }
+    .revize-karta .typ-pill {
+        display:inline-block;
+        padding:4px 10px;
+        border-radius:999px;
+        border:1px solid #5a8dee55;
+        background:#1f2a44;
+        color:#8cb4ff;
+        font-size:0.85rem;
+        font-weight:600;
+        font-family:'IBM Plex Mono',monospace;
+    }
+    .revize-karta .next-date {
+        font-size:1.02rem;
+        font-weight:700;
+        color:#f5f7ff;
+        font-family:'IBM Plex Mono',monospace;
+    }
+    .revize-karta .next-date.next-red { color:#ff8f8f; }
+    .revize-karta .next-date.next-orange { color:#ffbf7a; }
+    .revize-karta .next-date.next-green { color:#87f0b3; }
 
   /* Responzivní sloupce – na úzkých obrazovkách skryjeme vedlejší sloupce */
   @media (max-width: 640px) {
@@ -258,19 +286,28 @@ if page == "📋 Přehled":
             st.info("Žádné revize neodpovídají zadaným filtrům.")
 
         for r, stav_txt, badge_cls in filtrovane:
-            st.markdown(f"""
+            next_cls = "next-green"
+            if badge_cls == "badge-red":
+                next_cls = "next-red"
+            elif badge_cls == "badge-orange":
+                next_cls = "next-orange"
+
+            card_html = f"""
             <div class="revize-karta">
-              <div class="nazev">{r['nazev']}</div>
-              <div class="detail">
-                📍 {r.get('umisteni') or '—'} &nbsp;·&nbsp;
-                                👤 {_subject_label(r)} &nbsp;·&nbsp;
-                🔧 {r.get('typ') or '—'} &nbsp;·&nbsp;
-                👷 {r.get('revizni_technik') or '—'} &nbsp;·&nbsp;
-                📅 {db.fmt_date(r['datum_platnosti'])}
-              </div>
-              <span class="status-badge {badge_cls}">{stav_txt}</span>
+                <div class="nazev">{r['nazev']}</div>
+                <div class="detail">
+                    📍 {r.get('umisteni') or '—'} &nbsp;·&nbsp;
+                    👤 {_subject_label(r)} &nbsp;·&nbsp;
+                    👷 {r.get('revizni_technik') or '—'}
+                </div>
+                <div class="hlavni-info">
+                    <span class="typ-pill">{r.get('typ') or '—'}</span>
+                    <span class="next-date {next_cls}">📅 Další revize: {db.fmt_date(r['datum_platnosti'])}</span>
+                </div>
+                <span class="status-badge {badge_cls}">{stav_txt}</span>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
 
             if st.button("🗑️ Smazat", key=f"del_{r['id']}", disabled=not _is_admin()):
                 db.pridej_historii(r["id"], "before_delete", r, _current_user())
