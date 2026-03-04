@@ -345,6 +345,7 @@ with st.sidebar:
     page = st.radio("Navigace", [
         "📋 Přehled",
         "➕ Přidat revizi",
+        "✏️ Editace revizí",
         "👥 Zákazníci",
         "📥 Import z Excelu",
         "📎 Přílohy a historie",
@@ -657,6 +658,91 @@ elif page == "👥 Zákazníci":
                 st.rerun()
     else:
         st.caption("Nejprve vytvořte zákazníka.")
+
+
+# ─── Editace revizí ────────────────────────────────────────────────────────
+elif page == "✏️ Editace revizí":
+    st.markdown("# ✏️ Editace revizí")
+
+    if not vsechny:
+        st.info("Nejsou dostupné žádné revize k editaci.")
+        st.stop()
+
+    labels = [
+        f"{r['id']} · {r.get('nazev') or 'Bez názvu'} · {_subject_label(r)} · {db.fmt_date(r['datum_platnosti'])}"
+        for r in vsechny
+    ]
+    selected_label = st.selectbox("Vyberte revizi", labels)
+    selected_id = int(selected_label.split(" · ")[0])
+    selected = next((r for r in vsechny if r["id"] == selected_id), None)
+
+    if not selected:
+        st.warning("Vybraná revize nebyla nalezena.")
+        st.stop()
+
+    typ_options = [
+        "elektroinstalace",
+        "spotřebiče",
+        "stroje",
+        "nouzové osvětlení",
+        "hromosvody",
+    ]
+    selected_typ = str(selected.get("typ") or "")
+    typ_index = typ_options.index(selected_typ) if selected_typ in typ_options else 0
+    zak_options, zak_map = _build_subject_options(zakaznici)
+
+    selected_zak_id = selected.get("zakaznik_id")
+    selected_zak_label = "— Nevybráno —"
+    for label, value in zak_map.items():
+        if value == selected_zak_id:
+            selected_zak_label = label
+            break
+
+    with st.form(f"edit_revize_standalone_{selected_id}"):
+        e_nazev = st.text_input("Název", value=selected.get("nazev") or "")
+        e_umisteni = st.text_input("Umístění", value=selected.get("umisteni") or "")
+        e_zakaznik_label = st.selectbox(
+            "Zákazník",
+            zak_options,
+            index=zak_options.index(selected_zak_label) if selected_zak_label in zak_options else 0,
+        )
+        e_typ = st.selectbox("Typ revize", typ_options, index=typ_index)
+        e_technik = st.text_input("Revizní technik", value=selected.get("revizni_technik") or "")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            e_datum_rev = st.date_input("Datum revize", value=_safe_date_input(selected.get("datum_revize"), dnes))
+        with c2:
+            e_datum_plat = st.date_input("Datum platnosti", value=_safe_date_input(selected.get("datum_platnosti"), dnes))
+
+        e_poznamka = st.text_area("Poznámka", value=selected.get("poznamka") or "", height=80)
+        ulozit_edit = st.form_submit_button("💾 Uložit změny", use_container_width=True, disabled=not _is_admin())
+
+    if ulozit_edit:
+        if not e_nazev.strip():
+            st.error("Název je povinný.")
+        elif e_zakaznik_label == "— Nevybráno —":
+            st.error("Vyberte zákazníka.")
+        elif e_datum_plat < e_datum_rev:
+            st.error("Datum platnosti nesmí být dříve než datum revize.")
+        else:
+            db.pridej_historii(selected_id, "before_update", selected, _current_user())
+            new_data = {
+                "nazev": e_nazev.strip(),
+                "umisteni": e_umisteni.strip(),
+                "typ": e_typ,
+                "datum_revize": e_datum_rev.strftime("%Y-%m-%d"),
+                "datum_platnosti": e_datum_plat.strftime("%Y-%m-%d"),
+                "revizni_technik": e_technik.strip(),
+                "poznamka": e_poznamka,
+                "zakaznik_id": zak_map.get(e_zakaznik_label),
+                "spolecnost_id": None,
+            }
+            db.update_revize(selected_id, new_data)
+            db.pridej_historii(selected_id, "after_update", {"id": selected_id, **new_data}, _current_user())
+            db.log_akce("update_revize", f"Upravena revize: {new_data['nazev']}", _current_user())
+            st.success("Revize byla upravena.")
+            st.rerun()
 
 
 # ─── Import z Excelu ─────────────────────────────────────────────────────────
