@@ -324,7 +324,10 @@ def pridat_zakaznika(data: dict) -> None:
     }
 
     if _je_supabase():
-        _supabase_client().table("zakaznici").insert(payload).execute()
+        try:
+            _supabase_client().table("zakaznici").insert(payload).execute()
+        except Exception:
+            return
         return
 
     import sqlite3
@@ -353,7 +356,10 @@ def pridat_spolecnost(data: dict) -> None:
     }
 
     if _je_supabase():
-        _supabase_client().table("spolecnosti").insert(payload).execute()
+        try:
+            _supabase_client().table("spolecnosti").insert(payload).execute()
+        except Exception:
+            return
         return
 
     import sqlite3
@@ -378,13 +384,16 @@ def update_zakaznik(zakaznik_id: int, data: dict) -> None:
     }
 
     if _je_supabase():
-        _supabase_client().table("zakaznici").update({
-            "jmeno": payload["jmeno"],
-            "telefon": payload["telefon"],
-            "email": payload["email"],
-            "adresa": payload["adresa"],
-            "poznamka": payload["poznamka"],
-        }).eq("id", zakaznik_id).execute()
+        try:
+            _supabase_client().table("zakaznici").update({
+                "jmeno": payload["jmeno"],
+                "telefon": payload["telefon"],
+                "email": payload["email"],
+                "adresa": payload["adresa"],
+                "poznamka": payload["poznamka"],
+            }).eq("id", zakaznik_id).execute()
+        except Exception:
+            return
         return
 
     import sqlite3
@@ -416,15 +425,18 @@ def update_spolecnost(spolecnost_id: int, data: dict) -> None:
     }
 
     if _je_supabase():
-        _supabase_client().table("spolecnosti").update({
-            "nazev": payload["nazev"],
-            "ico": payload["ico"],
-            "kontakt": payload["kontakt"],
-            "telefon": payload["telefon"],
-            "email": payload["email"],
-            "adresa": payload["adresa"],
-            "poznamka": payload["poznamka"],
-        }).eq("id", spolecnost_id).execute()
+        try:
+            _supabase_client().table("spolecnosti").update({
+                "nazev": payload["nazev"],
+                "ico": payload["ico"],
+                "kontakt": payload["kontakt"],
+                "telefon": payload["telefon"],
+                "email": payload["email"],
+                "adresa": payload["adresa"],
+                "poznamka": payload["poznamka"],
+            }).eq("id", spolecnost_id).execute()
+        except Exception:
+            return
         return
 
     import sqlite3
@@ -447,8 +459,11 @@ def update_spolecnost(spolecnost_id: int, data: dict) -> None:
 
 def pocet_revizi_pro_zakaznika(zakaznik_id: int) -> int:
     if _je_supabase():
-        res = _supabase_client().table("revize").select("id", count="exact").eq("zakaznik_id", zakaznik_id).execute()
-        return int(res.count or 0)
+        try:
+            res = _supabase_client().table("revize").select("id", count="exact").eq("zakaznik_id", zakaznik_id).execute()
+            return int(res.count or 0)
+        except Exception:
+            return 0
 
     import sqlite3
     with sqlite3.connect("revize_elektro.db") as con:
@@ -458,8 +473,11 @@ def pocet_revizi_pro_zakaznika(zakaznik_id: int) -> int:
 
 def pocet_revizi_pro_spolecnost(spolecnost_id: int) -> int:
     if _je_supabase():
-        res = _supabase_client().table("revize").select("id", count="exact").eq("spolecnost_id", spolecnost_id).execute()
-        return int(res.count or 0)
+        try:
+            res = _supabase_client().table("revize").select("id", count="exact").eq("spolecnost_id", spolecnost_id).execute()
+            return int(res.count or 0)
+        except Exception:
+            return 0
 
     import sqlite3
     with sqlite3.connect("revize_elektro.db") as con:
@@ -469,7 +487,10 @@ def pocet_revizi_pro_spolecnost(spolecnost_id: int) -> int:
 
 def smazat_zakaznika(zakaznik_id: int) -> None:
     if _je_supabase():
-        _supabase_client().table("zakaznici").delete().eq("id", zakaznik_id).execute()
+        try:
+            _supabase_client().table("zakaznici").delete().eq("id", zakaznik_id).execute()
+        except Exception:
+            return
         return
 
     import sqlite3
@@ -479,7 +500,10 @@ def smazat_zakaznika(zakaznik_id: int) -> None:
 
 def smazat_spolecnost(spolecnost_id: int) -> None:
     if _je_supabase():
-        _supabase_client().table("spolecnosti").delete().eq("id", spolecnost_id).execute()
+        try:
+            _supabase_client().table("spolecnosti").delete().eq("id", spolecnost_id).execute()
+        except Exception:
+            return
         return
 
     import sqlite3

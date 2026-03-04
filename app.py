@@ -225,9 +225,6 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
                     if key:
                         zakaznik_map[key] = z_item.get("id")
                 zakaznik_id = zakaznik_map.get(zak_name_key)
-                if zakaznik_id is None:
-                    errors.append(f"Řádek {row_number}: zákazník '{raw_zak_name}' se nepodařilo vytvořit.")
-                    continue
 
         if raw_spo_id:
             try:
@@ -246,9 +243,6 @@ def _prepare_import_rows(df: pd.DataFrame, existing_rows: list[dict]):
                     if key:
                         spolecnost_map[key] = s_item.get("id")
                 spolecnost_id = spolecnost_map.get(spo_name_key)
-                if spolecnost_id is None:
-                    errors.append(f"Řádek {row_number}: společnost '{raw_spo_name}' se nepodařilo vytvořit.")
-                    continue
 
         dedup_key = (nazev.lower(), umisteni.lower(), datum_plat.strftime("%Y-%m-%d"))
         if dedup_key in db_keys:
