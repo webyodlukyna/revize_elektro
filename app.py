@@ -539,6 +539,13 @@ if page == "📋 Přehled":
 elif page == "➕ Přidat revizi":
     st.markdown("# ➕ Přidat novou revizi")
     zak_options, spo_options, zak_map, spo_map = _build_subject_options(zakaznici, spolecnosti)
+    typ_options = [
+        "elektroinstalace",
+        "spotřebiče",
+        "stroje",
+        "nouzové osvětlení",
+        "hromosvody",
+    ]
 
     with st.form("nova_revize"):
         nazev    = st.text_input("Název zařízení / objektu *", placeholder="např. Rozvaděč RH-01")
@@ -550,7 +557,7 @@ elif page == "➕ Přidat revizi":
         with col_sub_2:
             spolecnost_label = st.selectbox("Společnost", spo_options)
 
-        typ      = st.selectbox("Typ revize", ["pravidelná", "výchozí", "mimořádná", "následná"])
+        typ      = st.selectbox("Typ revize", typ_options)
         technik  = st.text_input("Revizní technik", placeholder="Jméno technika")
 
         # Na mobilu pod sebou, na desktopu vedle sebe
@@ -852,7 +859,13 @@ elif page == "📎 Přílohy a historie":
         st.stop()
 
     st.markdown("### ✏️ Editace revize")
-    typ_options = ["pravidelná", "výchozí", "mimořádná", "následná"]
+    typ_options = [
+        "elektroinstalace",
+        "spotřebiče",
+        "stroje",
+        "nouzové osvětlení",
+        "hromosvody",
+    ]
     selected_typ = str(selected.get("typ") or "")
     typ_index = typ_options.index(selected_typ) if selected_typ in typ_options else 0
     zak_options, spo_options, zak_map, spo_map = _build_subject_options(zakaznici, spolecnosti)
