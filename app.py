@@ -7,7 +7,6 @@ import streamlit as st
 from datetime import date, timedelta
 import io
 import pandas as pd
-from pathlib import Path
 
 import database as db
 import config as cfg_mod
@@ -309,13 +308,6 @@ def _is_admin() -> bool:
     return st.session_state.get("role", "admin") == "admin"
 
 
-UPLOADS_DIR = Path("uploads")
-
-
-def _safe_filename(name: str) -> str:
-    return "".join(ch for ch in name if ch.isalnum() or ch in {"-", "_", ".", " "}).strip() or "soubor"
-
-
 def _safe_date_input(value, fallback: date) -> date:
     parsed = pd.to_datetime(str(value or ""), errors="coerce")
     return fallback if pd.isna(parsed) else parsed.date()
@@ -348,7 +340,6 @@ with st.sidebar:
         "✏️ Editace revizí",
         "👥 Zákazníci",
         "📥 Import z Excelu",
-        "📎 Přílohy a historie",
         "📅 Kalendář (ICS)",
         "🔔 Odeslat upozornění",
         "🧾 Audit log",
@@ -793,176 +784,6 @@ elif page == "📥 Import z Excelu":
                     st.info("Žádné řádky k importu.")
         except Exception as e:
             st.error(f"Soubor se nepodařilo načíst: {e}")
-
-
-# ─── Přílohy a historie ─────────────────────────────────────────────────────
-elif page == "📎 Přílohy a historie":
-    st.markdown("# 📎 Přílohy a historie revize")
-
-    if not vsechny:
-        st.info("Nejsou dostupné žádné revize.")
-        st.stop()
-
-    labels = [
-        f"{r['id']} · {r.get('nazev') or 'Bez názvu'} · {_subject_label(r)} · {db.fmt_date(r['datum_platnosti'])}"
-        for r in vsechny
-    ]
-    selected_label = st.selectbox("Vyberte revizi", labels)
-    selected_id = int(selected_label.split(" · ")[0])
-    selected = next((r for r in vsechny if r["id"] == selected_id), None)
-
-    if not selected:
-        st.warning("Vybraná revize nebyla nalezena.")
-        st.stop()
-
-    st.markdown("### ✏️ Editace revize")
-    typ_options = [
-        "elektroinstalace",
-        "spotřebiče",
-        "stroje",
-        "nouzové osvětlení",
-        "hromosvody",
-    ]
-    selected_typ = str(selected.get("typ") or "")
-    typ_index = typ_options.index(selected_typ) if selected_typ in typ_options else 0
-    zak_options, zak_map = _build_subject_options(zakaznici)
-
-    selected_zak_id = selected.get("zakaznik_id")
-
-    selected_zak_label = "— Nevybráno —"
-
-    for label, value in zak_map.items():
-        if value == selected_zak_id:
-            selected_zak_label = label
-            break
-
-    with st.form(f"edit_revize_{selected_id}"):
-        e_nazev = st.text_input("Název", value=selected.get("nazev") or "")
-        e_umisteni = st.text_input("Umístění", value=selected.get("umisteni") or "")
-
-        e_zakaznik_label = st.selectbox(
-            "Zákazník",
-            zak_options,
-            index=zak_options.index(selected_zak_label) if selected_zak_label in zak_options else 0,
-        )
-
-        e_typ = st.selectbox(
-            "Typ revize",
-            typ_options,
-            index=typ_index,
-        )
-        e_technik = st.text_input("Revizní technik", value=selected.get("revizni_technik") or "")
-
-        c1, c2 = st.columns(2)
-        with c1:
-            e_datum_rev = st.date_input(
-                "Datum revize",
-                value=_safe_date_input(selected.get("datum_revize"), dnes),
-            )
-        with c2:
-            e_datum_plat = st.date_input(
-                "Datum platnosti",
-                value=_safe_date_input(selected.get("datum_platnosti"), dnes),
-            )
-
-        e_poznamka = st.text_area("Poznámka", value=selected.get("poznamka") or "", height=80)
-        ulozit_edit = st.form_submit_button("💾 Uložit změny", use_container_width=True, disabled=not _is_admin())
-
-    if ulozit_edit:
-        if not e_nazev.strip():
-            st.error("Název je povinný.")
-        elif e_zakaznik_label == "— Nevybráno —":
-            st.error("Vyberte zákazníka.")
-        elif e_datum_plat < e_datum_rev:
-            st.error("Datum platnosti nesmí být dříve než datum revize.")
-        else:
-            db.pridej_historii(selected_id, "before_update", selected, _current_user())
-            new_data = {
-                "nazev": e_nazev.strip(),
-                "umisteni": e_umisteni.strip(),
-                "typ": e_typ,
-                "datum_revize": e_datum_rev.strftime("%Y-%m-%d"),
-                "datum_platnosti": e_datum_plat.strftime("%Y-%m-%d"),
-                "revizni_technik": e_technik.strip(),
-                "poznamka": e_poznamka,
-                "zakaznik_id": zak_map.get(e_zakaznik_label),
-                "spolecnost_id": None,
-            }
-            db.update_revize(selected_id, new_data)
-            db.pridej_historii(selected_id, "after_update", {"id": selected_id, **new_data}, _current_user())
-            db.log_akce("update_revize", f"Upravena revize: {new_data['nazev']}", _current_user())
-            st.success("Revize byla upravena.")
-            st.rerun()
-
-    st.markdown("---")
-    st.markdown("### 📎 Přílohy")
-    uploaded_files = st.file_uploader(
-        "Nahrát soubory k revizi",
-        type=["pdf", "jpg", "jpeg", "png", "doc", "docx", "xlsx", "xls", "txt"],
-        accept_multiple_files=True,
-    )
-
-    if uploaded_files and st.button("⬆️ Uložit přílohy", use_container_width=True, disabled=not _is_admin()):
-        saved_count = 0
-        target_dir = UPLOADS_DIR / str(selected_id)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        for f in uploaded_files:
-            safe_name = _safe_filename(f.name)
-            ts_name = f"{date.today().strftime('%Y%m%d')}_{safe_name}"
-            target_file = target_dir / ts_name
-            target_file.write_bytes(f.getbuffer())
-            db.uloz_prilohu(selected_id, f.name, str(target_file), _current_user())
-            saved_count += 1
-
-        db.log_akce("upload_priloha", f"Nahráno příloh: {saved_count} (revize {selected_id})", _current_user())
-        st.success(f"Uloženo {saved_count} příloh.")
-        st.rerun()
-
-    prilohy = db.get_prilohy(selected_id)
-    if not prilohy:
-        st.caption("K revizi zatím nejsou žádné přílohy.")
-    else:
-        for p in prilohy:
-            file_path = Path(str(p.get("file_path") or ""))
-            col_a, col_b = st.columns([4, 1])
-            with col_a:
-                st.markdown(f"**{p.get('file_name', 'soubor')}** · {p.get('uploaded_at', '')} · {p.get('uploaded_by', '')}")
-                if file_path.exists():
-                    st.download_button(
-                        label="⬇️ Stáhnout",
-                        data=file_path.read_bytes(),
-                        file_name=p.get("file_name") or file_path.name,
-                        use_container_width=False,
-                        key=f"download_priloha_{p.get('id')}",
-                    )
-                else:
-                    st.caption("Soubor na disku nebyl nalezen.")
-            with col_b:
-                if st.button("🗑️", key=f"del_priloha_{p.get('id')}", disabled=not _is_admin()):
-                    if file_path.exists():
-                        file_path.unlink()
-                    db.smazat_prilohu(int(p["id"]))
-                    db.log_akce("delete_priloha", f"Smazána příloha {p.get('file_name')} (revize {selected_id})", _current_user())
-                    st.rerun()
-
-    st.markdown("---")
-    st.markdown("### 🕓 Historie verzí")
-    historie = db.get_historie(selected_id, limit=200)
-    if not historie:
-        st.caption("Pro tuto revizi zatím není historie změn.")
-    else:
-        hist_rows = []
-        for item in historie:
-            snapshot = item.get("snapshot_json") or ""
-            snapshot_preview = snapshot[:180] + ("..." if len(snapshot) > 180 else "")
-            hist_rows.append({
-                "Čas": item.get("changed_at"),
-                "Uživatel": item.get("changed_by"),
-                "Akce": item.get("action"),
-                "Snapshot": snapshot_preview,
-            })
-        st.dataframe(pd.DataFrame(hist_rows), use_container_width=True, hide_index=True)
 
 
 # ─── Kalendář (ICS) ─────────────────────────────────────────────────────────
