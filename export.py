@@ -8,6 +8,7 @@ Používá reportlab pro generování PDF bez externích závislostí.
 import io
 import os
 from datetime import date, datetime
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -33,6 +34,24 @@ BARVA_TEXT      = colors.HexColor("#2c3e50")
 
 def _configure_pdf_fonts() -> tuple[str, str]:
     """Vrátí (regular, bold) font name použitelné pro češtinu v PDF."""
+    # 1) Lokální fonty v projektu (nejspolehlivější varianta napříč prostředími)
+    base_dir = Path(__file__).resolve().parent
+    local_regular = base_dir / "fonts" / "NotoSans-Regular.ttf"
+    local_bold = base_dir / "fonts" / "NotoSans-Bold.ttf"
+
+    if local_regular.exists() and local_bold.exists():
+        regular_name = "NotoSansLocal"
+        bold_name = "NotoSansLocal-Bold"
+        try:
+            registered = set(pdfmetrics.getRegisteredFontNames())
+            if regular_name not in registered:
+                pdfmetrics.registerFont(TTFont(regular_name, str(local_regular)))
+            if bold_name not in registered:
+                pdfmetrics.registerFont(TTFont(bold_name, str(local_bold)))
+            return regular_name, bold_name
+        except Exception:
+            pass
+
     # Preferujeme fonty s plnou podporou Latin Extended (včetně Ř/Ě).
     candidates = [
         # Linux - nejčastější v cloudu
