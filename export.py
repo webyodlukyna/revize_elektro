@@ -211,11 +211,11 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
 
         sirky = [
             8  * mm,   # #
-            42 * mm,   # Zařízení
-            28 * mm,   # Umístění
-            20 * mm,   # Typ
-            22 * mm,   # Provedena
-            22 * mm,   # Platnost
+            36 * mm,   # Zařízení
+            24 * mm,   # Umístění
+            32 * mm,   # Typ
+            21 * mm,   # Provedena
+            21 * mm,   # Platnost
             32 * mm,   # Stav
         ]
 
