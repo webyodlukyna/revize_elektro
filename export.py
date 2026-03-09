@@ -207,7 +207,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
         prvky.append(Paragraph("Žádné revize k zobrazení.", styles["Normal"]))
     else:
         # Záhlaví tabulky
-        hlavicka = ["#", "Zařízení / Objekt", "Umístění", "Typ", "Provedena", "Platnost do", "Technik", "Stav"]
+        hlavicka = ["#", "Zařízení / Objekt", "Umístění", "Typ", "Provedena", "Platnost do", "Stav"]
 
         sirky = [
             8  * mm,   # #
@@ -216,8 +216,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
             20 * mm,   # Typ
             22 * mm,   # Provedena
             22 * mm,   # Platnost
-            28 * mm,   # Technik
-            26 * mm,   # Stav
+            32 * mm,   # Stav
         ]
 
         radky = [hlavicka]
@@ -233,7 +232,6 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
                 r.get("typ") or "—",
                 _fmt(r.get("datum_revize", "")),
                 _fmt(r.get("datum_platnosti", "")),
-                r.get("revizni_technik") or "—",
                 stav_txt,
             ])
 
@@ -254,7 +252,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
             ("FONTNAME",  (0, 1), (-1, -1), font_regular),
             ("FONTSIZE",  (0, 1), (-1, -1), 7.5),
             ("ALIGN",     (0, 1), (0, -1),  "CENTER"),   # číslo
-            ("ALIGN",     (7, 1), (7, -1),  "CENTER"),   # stav
+            ("ALIGN",     (6, 1), (6, -1),  "CENTER"),   # stav
             ("VALIGN",    (0, 0), (-1, -1), "MIDDLE"),
             ("TOPPADDING",    (0, 1), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 1), (-1, -1), 3),
@@ -267,10 +265,10 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
         # Střídání barev řádků + barva stavu
         for i in range(1, len(radky)):
             bg = BARVA_RADEK_1 if i % 2 == 0 else BARVA_RADEK_2
-            ts.add("BACKGROUND", (0, i), (6, i), bg)
+            ts.add("BACKGROUND", (0, i), (5, i), bg)
             # Sloupec stavu — barevný text
-            ts.add("TEXTCOLOR",  (7, i), (7, i), barvy_stavu[i - 1])
-            ts.add("FONTNAME",   (7, i), (7, i), font_bold)
+            ts.add("TEXTCOLOR",  (6, i), (6, i), barvy_stavu[i - 1])
+            ts.add("FONTNAME",   (6, i), (6, i), font_bold)
 
         tabulka.setStyle(ts)
         prvky.append(tabulka)
