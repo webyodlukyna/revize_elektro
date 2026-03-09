@@ -8,6 +8,7 @@ Používá reportlab pro generování PDF bez externích závislostí.
 import io
 import os
 from datetime import date, datetime
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -33,6 +34,28 @@ BARVA_TEXT      = colors.HexColor("#2c3e50")
 
 def _configure_pdf_fonts() -> tuple[str, str]:
     """Vrátí (regular, bold) font name použitelné pro češtinu v PDF."""
+    # Primárně použijeme fonty dodávané s ReportLabem (stabilní napříč prostředími).
+    try:
+        import reportlab
+
+        rl_fonts_dir = Path(reportlab.__file__).resolve().parent / "fonts"
+        vera_regular = rl_fonts_dir / "Vera.ttf"
+        vera_bold = rl_fonts_dir / "VeraBd.ttf"
+
+        if vera_regular.exists() and vera_bold.exists():
+            regular_name = "Vera"
+            bold_name = "Vera-Bold"
+
+            registered = set(pdfmetrics.getRegisteredFontNames())
+            if regular_name not in registered:
+                pdfmetrics.registerFont(TTFont(regular_name, str(vera_regular)))
+            if bold_name not in registered:
+                pdfmetrics.registerFont(TTFont(bold_name, str(vera_bold)))
+
+            return regular_name, bold_name
+    except Exception:
+        pass
+
     candidates = [
         # Windows
         (
@@ -60,8 +83,11 @@ def _configure_pdf_fonts() -> tuple[str, str]:
     for regular_path, bold_path, regular_name, bold_name in candidates:
         if os.path.exists(regular_path) and os.path.exists(bold_path):
             try:
-                pdfmetrics.registerFont(TTFont(regular_name, regular_path))
-                pdfmetrics.registerFont(TTFont(bold_name, bold_path))
+                registered = set(pdfmetrics.getRegisteredFontNames())
+                if regular_name not in registered:
+                    pdfmetrics.registerFont(TTFont(regular_name, regular_path))
+                if bold_name not in registered:
+                    pdfmetrics.registerFont(TTFont(bold_name, bold_path))
                 return regular_name, bold_name
             except Exception:
                 continue
