@@ -8,7 +8,6 @@ Používá reportlab pro generování PDF bez externích závislostí.
 import io
 import os
 from datetime import date, datetime
-from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -34,29 +33,27 @@ BARVA_TEXT      = colors.HexColor("#2c3e50")
 
 def _configure_pdf_fonts() -> tuple[str, str]:
     """Vrátí (regular, bold) font name použitelné pro češtinu v PDF."""
-    # Primárně použijeme fonty dodávané s ReportLabem (stabilní napříč prostředími).
-    try:
-        import reportlab
-
-        rl_fonts_dir = Path(reportlab.__file__).resolve().parent / "fonts"
-        vera_regular = rl_fonts_dir / "Vera.ttf"
-        vera_bold = rl_fonts_dir / "VeraBd.ttf"
-
-        if vera_regular.exists() and vera_bold.exists():
-            regular_name = "Vera"
-            bold_name = "Vera-Bold"
-
-            registered = set(pdfmetrics.getRegisteredFontNames())
-            if regular_name not in registered:
-                pdfmetrics.registerFont(TTFont(regular_name, str(vera_regular)))
-            if bold_name not in registered:
-                pdfmetrics.registerFont(TTFont(bold_name, str(vera_bold)))
-
-            return regular_name, bold_name
-    except Exception:
-        pass
-
+    # Preferujeme fonty s plnou podporou Latin Extended (včetně Ř/Ě).
     candidates = [
+        # Linux - nejčastější v cloudu
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "DejaVuSans",
+            "DejaVuSans-Bold",
+        ),
+        (
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+            "NotoSans",
+            "NotoSans-Bold",
+        ),
+        (
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "LiberationSans",
+            "LiberationSans-Bold",
+        ),
         # Windows
         (
             "C:/Windows/Fonts/arial.ttf",
@@ -64,12 +61,11 @@ def _configure_pdf_fonts() -> tuple[str, str]:
             "ArialUnicode",
             "ArialUnicode-Bold",
         ),
-        # Linux
         (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "DejaVuSans",
-            "DejaVuSans-Bold",
+            "C:/Windows/Fonts/calibri.ttf",
+            "C:/Windows/Fonts/calibrib.ttf",
+            "CalibriUnicode",
+            "CalibriUnicode-Bold",
         ),
         # macOS
         (
@@ -92,7 +88,7 @@ def _configure_pdf_fonts() -> tuple[str, str]:
             except Exception:
                 continue
 
-    # Fallback funguje, ale nemusí pokrýt všechnu diakritiku.
+    # Poslední fallback funguje, ale nemusí pokrýt všechnu diakritiku.
     return "Helvetica", "Helvetica-Bold"
 
 
