@@ -1,3 +1,4 @@
+# vytvořil lukyn.sifty@gmail.com copyright 2025
 """
 export.py – Export revizí do PDF
 =================================
@@ -5,6 +6,7 @@ Používá reportlab pro generování PDF bez externích závislostí.
 """
 
 import io
+import os
 from datetime import date, datetime
 
 from reportlab.lib import colors
@@ -27,6 +29,45 @@ BARVA_OK        = colors.HexColor("#27ae60")
 BARVA_RADEK_1   = colors.HexColor("#f8f9fa")
 BARVA_RADEK_2   = colors.white
 BARVA_TEXT      = colors.HexColor("#2c3e50")
+
+
+def _configure_pdf_fonts() -> tuple[str, str]:
+    """Vrátí (regular, bold) font name použitelné pro češtinu v PDF."""
+    candidates = [
+        # Windows
+        (
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+            "ArialUnicode",
+            "ArialUnicode-Bold",
+        ),
+        # Linux
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "DejaVuSans",
+            "DejaVuSans-Bold",
+        ),
+        # macOS
+        (
+            "/Library/Fonts/Arial.ttf",
+            "/Library/Fonts/Arial Bold.ttf",
+            "ArialMacUnicode",
+            "ArialMacUnicode-Bold",
+        ),
+    ]
+
+    for regular_path, bold_path, regular_name, bold_name in candidates:
+        if os.path.exists(regular_path) and os.path.exists(bold_path):
+            try:
+                pdfmetrics.registerFont(TTFont(regular_name, regular_path))
+                pdfmetrics.registerFont(TTFont(bold_name, bold_path))
+                return regular_name, bold_name
+            except Exception:
+                continue
+
+    # Fallback funguje, ale nemusí pokrýt všechnu diakritiku.
+    return "Helvetica", "Helvetica-Bold"
 
 
 def _ics_escape(value: str) -> str:
@@ -69,6 +110,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
         PDF soubor jako bytes (vhodné pro st.download_button)
     """
     buffer = io.BytesIO()
+    font_regular, font_bold = _configure_pdf_fonts()
 
     doc = SimpleDocTemplate(
         buffer,
@@ -89,7 +131,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
         fontSize=18,
         textColor=BARVA_HLAVICKA,
         spaceAfter=2 * mm,
-        fontName="Helvetica-Bold",
+        fontName=font_bold,
     )
     podnadpis_style = ParagraphStyle(
         "Podnadpis",
@@ -97,14 +139,14 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
         fontSize=9,
         textColor=colors.HexColor("#7f8c8d"),
         spaceAfter=6 * mm,
-        fontName="Helvetica",
+        fontName=font_regular,
     )
     legenda_style = ParagraphStyle(
         "Legenda",
         parent=styles["Normal"],
         fontSize=8,
         textColor=colors.HexColor("#7f8c8d"),
-        fontName="Helvetica",
+        fontName=font_regular,
         spaceBefore=4 * mm,
     )
 
@@ -112,7 +154,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
     prvky = []
 
     # Hlavička
-    prvky.append(Paragraph("⚡ Přehled revizí – RP ELECTRIC SOLUTION s.r.o.", nadpis_style))
+    prvky.append(Paragraph("Přehled revizí - RP ELECTRIC SOLUTION s.r.o.", nadpis_style))
     dnes_txt = date.today().strftime("%d.%m.%Y")
     prvky.append(Paragraph(
         f"Vygenerováno: {dnes_txt}  ·  Filtr: {filtr}  ·  Celkem záznamů: {len(revize)}",
@@ -161,14 +203,14 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
             # Záhlaví
             ("BACKGROUND",    (0, 0), (-1, 0), BARVA_HLAVICKA),
             ("TEXTCOLOR",     (0, 0), (-1, 0), colors.white),
-            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTNAME",      (0, 0), (-1, 0), font_bold),
             ("FONTSIZE",      (0, 0), (-1, 0), 8),
             ("ALIGN",         (0, 0), (-1, 0), "CENTER"),
             ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
             ("TOPPADDING",    (0, 0), (-1, 0), 4),
 
             # Datové řádky
-            ("FONTNAME",  (0, 1), (-1, -1), "Helvetica"),
+            ("FONTNAME",  (0, 1), (-1, -1), font_regular),
             ("FONTSIZE",  (0, 1), (-1, -1), 7.5),
             ("ALIGN",     (0, 1), (0, -1),  "CENTER"),   # číslo
             ("ALIGN",     (7, 1), (7, -1),  "CENTER"),   # stav
@@ -187,7 +229,7 @@ def generuj_pdf(revize: list[dict], filtr: str = "Všechny") -> bytes:
             ts.add("BACKGROUND", (0, i), (6, i), bg)
             # Sloupec stavu — barevný text
             ts.add("TEXTCOLOR",  (7, i), (7, i), barvy_stavu[i - 1])
-            ts.add("FONTNAME",   (7, i), (7, i), "Helvetica-Bold")
+            ts.add("FONTNAME",   (7, i), (7, i), font_bold)
 
         tabulka.setStyle(ts)
         prvky.append(tabulka)

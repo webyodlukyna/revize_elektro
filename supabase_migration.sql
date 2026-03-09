@@ -1,3 +1,4 @@
+-- vytvořil lukyn.sifty@gmail.com copyright 2025
 -- Supabase migration for revize_elektro
 -- Spusťte v Supabase SQL Editoru.
 

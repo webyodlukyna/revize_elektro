@@ -1,3 +1,4 @@
+# vytvořil lukyn.sifty@gmail.com copyright 2025
 """
 config.py – Správa konfigurace a odesílání e-mailů
 ===================================================

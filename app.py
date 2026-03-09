@@ -1,3 +1,4 @@
+# vytvořil lukyn.sifty@gmail.com copyright 2025
 """
 app.py – Pouze UI vrstva (Streamlit)
 Spuštění: streamlit run app.py
@@ -18,7 +19,7 @@ st.set_page_config(
     page_title="RP ELECTRIC SOLUTION s.r.o.",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed",  # na mobilu sidebar schovaný
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -36,6 +37,9 @@ st.markdown("""
   .badge-green  { background:#1a3d2a; color:#2ecc71; border:1px solid #2ecc7144; }
 
   div[data-testid="stSidebar"] { background:#13151f; border-right:1px solid #2a2d3e; }
+    [data-testid="collapsedControl"] { display: none !important; }
+    [data-testid="stSidebarCollapseButton"] { display: none !important; }
+    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
 
   .stButton > button {
     background:#1a1d27; color:#e0e0e0; border:1px solid #3a3d4e;
@@ -324,8 +328,10 @@ elif page == "➕ Přidat revizi":
         "elektroinstalace",
         "spotřebiče",
         "stroje",
+        "LPS",
         "nouzové osvětlení",
         "hromosvody",
+        "jiné",
     ]
 
     with st.form("nova_revize"):
@@ -486,8 +492,10 @@ elif page == "✏️ Editace revizí":
         "elektroinstalace",
         "spotřebiče",
         "stroje",
+        "LPS",
         "nouzové osvětlení",
         "hromosvody",
+        "jiné",
     ]
     selected_typ = str(selected.get("typ") or "")
     typ_index = typ_options.index(selected_typ) if selected_typ in typ_options else 0

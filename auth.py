@@ -1,3 +1,4 @@
+# vytvořil lukyn.sifty@gmail.com copyright 2025
 """
 auth.py – Přihlašování do aplikace (jedno globální heslo)
 ==========================================================
