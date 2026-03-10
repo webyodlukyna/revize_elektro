@@ -152,6 +152,37 @@ def webhook_ok(cfg: dict) -> bool:
     return bool((cfg.get("webhook_url") or "").strip())
 
 
+def otestovat_smtp(cfg: dict, timeout_sec: int = 20) -> tuple[bool, str]:
+    """
+    Ověří SMTP připojení a přihlášení bez odeslání e-mailu.
+    Vrací (ok, zpráva).
+    """
+    host = str(cfg.get("smtp_host") or "").strip()
+    user = str(cfg.get("smtp_user") or "").strip()
+    pwd = str(cfg.get("smtp_pass") or "")
+    try:
+        port = int(cfg.get("smtp_port", 587))
+    except Exception:
+        return False, "Neplatný SMTP port."
+
+    if not host or not user or not pwd:
+        return False, "Chybí SMTP server, e-mail nebo heslo/app password."
+
+    try:
+        with smtplib.SMTP(host, port, timeout=timeout_sec) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(user, pwd)
+        return True, "SMTP připojení i přihlášení proběhlo úspěšně."
+    except smtplib.SMTPAuthenticationError:
+        return False, "SMTP autentizace selhala. Zkontrolujte e-mail a App Password."
+    except smtplib.SMTPException as exc:
+        return False, f"SMTP chyba: {exc}"
+    except OSError as exc:
+        return False, f"Síťová chyba při připojení na SMTP: {exc}"
+
+
 # ─── Sestavení HTML e-mailu ───────────────────────────────────────────────────
 
 def _fmt_date(d: str) -> str:

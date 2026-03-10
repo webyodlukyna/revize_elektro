@@ -786,6 +786,16 @@ elif page == "⚙️ Nastavení notifikací":
             st.success("✅ Nastavení uloženo!")
 
     st.markdown("---")
+    st.markdown("### 📧 Test SMTP (bez odeslání e-mailu)")
+    if st.button("🧪 Otestovat SMTP", use_container_width=True):
+        cfg_now = cfg_mod.nacti_config()
+        ok, msg = cfg_mod.otestovat_smtp(cfg_now)
+        if ok:
+            st.success(f"✅ {msg}")
+        else:
+            st.error(f"❌ {msg}")
+
+    st.markdown("---")
     st.markdown("### 🔌 Test připojení k databázi")
     if st.button("🔍 Otestovat připojení", use_container_width=True):
         try:
