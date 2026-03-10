@@ -152,16 +152,28 @@ def webhook_ok(cfg: dict) -> bool:
     return bool((cfg.get("webhook_url") or "").strip())
 
 
+def _smtp_auth_data(cfg: dict) -> tuple[str, str, str, int]:
+    """Vrátí normalizované SMTP přihlašovací údaje."""
+    host = str(cfg.get("smtp_host") or "").strip()
+    user = str(cfg.get("smtp_user") or "").strip()
+    pwd = str(cfg.get("smtp_pass") or "").strip()
+    port = int(cfg.get("smtp_port", 587))
+
+    # Google App Password se často kopíruje ve skupinách oddělených mezerou.
+    if "gmail.com" in host.lower() and " " in pwd:
+        pwd = pwd.replace(" ", "")
+
+    return host, user, pwd, port
+
+
 def otestovat_smtp(cfg: dict, timeout_sec: int = 20) -> tuple[bool, str]:
     """
     Ověří SMTP připojení a přihlášení bez odeslání e-mailu.
     Vrací (ok, zpráva).
     """
-    host = str(cfg.get("smtp_host") or "").strip()
-    user = str(cfg.get("smtp_user") or "").strip()
-    pwd = str(cfg.get("smtp_pass") or "")
+    host, user, pwd, port = _smtp_auth_data(cfg)
     try:
-        port = int(cfg.get("smtp_port", 587))
+        port = int(port)
     except Exception:
         return False, "Neplatný SMTP port."
 
@@ -180,8 +192,17 @@ def otestovat_smtp(cfg: dict, timeout_sec: int = 20) -> tuple[bool, str]:
                 server.ehlo()
                 server.login(user, pwd)
         return True, "SMTP připojení i přihlášení proběhlo úspěšně."
-    except smtplib.SMTPAuthenticationError:
-        return False, "SMTP autentizace selhala. Zkontrolujte e-mail a App Password."
+    except smtplib.SMTPAuthenticationError as exc:
+        detail = ""
+        try:
+            detail = exc.smtp_error.decode(errors="ignore") if isinstance(exc.smtp_error, (bytes, bytearray)) else str(exc.smtp_error)
+        except Exception:
+            detail = ""
+        code = getattr(exc, "smtp_code", "")
+        suffix = f" (kód {code})" if code else ""
+        if detail:
+            return False, f"SMTP autentizace selhala{suffix}: {detail}"
+        return False, f"SMTP autentizace selhala{suffix}. Zkontrolujte e-mail a App Password."
     except TimeoutError:
         return False, "SMTP timeout. Ověřte host/port; obvykle 587 (STARTTLS) nebo 465 (SSL)."
     except smtplib.SMTPException as exc:
@@ -268,10 +289,7 @@ def odeslat_email(cfg: dict, rows: list[dict]) -> None:
     msg["To"]      = ", ".join(cfg["prijemci"])
     msg.attach(MIMEText(html, "html", "utf-8"))
 
-    host = str(cfg.get("smtp_host") or "").strip()
-    port = int(cfg.get("smtp_port", 587))
-    user = str(cfg.get("smtp_user") or "").strip()
-    pwd = str(cfg.get("smtp_pass") or "")
+    host, user, pwd, port = _smtp_auth_data(cfg)
 
     if port == 465:
         with smtplib.SMTP_SSL(host, port, timeout=30) as server:
