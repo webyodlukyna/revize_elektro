@@ -216,7 +216,7 @@ def reset_odeslano() -> None:
         con.execute("UPDATE revize SET upozorneni_odeslano = 0")
 
 
-def get_k_odeslani(days: int = 7) -> list[dict]:
+def get_k_odeslani(days: int = 30) -> list[dict]:
     limit = (date.today() + timedelta(days=days)).strftime("%Y-%m-%d")
 
     if _je_supabase():

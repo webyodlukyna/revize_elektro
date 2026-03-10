@@ -623,7 +623,7 @@ elif page == "🔔 Odeslat upozornění":
 
         col_days, col_sent = st.columns([2, 1])
         with col_days:
-            dny_horizont = st.slider("Horizont upozornění (dny)", min_value=1, max_value=90, value=7, step=1)
+            dny_horizont = st.slider("Horizont upozornění (dny)", min_value=1, max_value=90, value=30, step=1)
         with col_sent:
             zahrnout_odeslane = st.checkbox("Zahrnout i již odeslané", value=False)
 
