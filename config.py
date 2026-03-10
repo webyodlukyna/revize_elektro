@@ -169,14 +169,21 @@ def otestovat_smtp(cfg: dict, timeout_sec: int = 20) -> tuple[bool, str]:
         return False, "Chybí SMTP server, e-mail nebo heslo/app password."
 
     try:
-        with smtplib.SMTP(host, port, timeout=timeout_sec) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(user, pwd)
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=timeout_sec) as server:
+                server.ehlo()
+                server.login(user, pwd)
+        else:
+            with smtplib.SMTP(host, port, timeout=timeout_sec) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(user, pwd)
         return True, "SMTP připojení i přihlášení proběhlo úspěšně."
     except smtplib.SMTPAuthenticationError:
         return False, "SMTP autentizace selhala. Zkontrolujte e-mail a App Password."
+    except TimeoutError:
+        return False, "SMTP timeout. Ověřte host/port; obvykle 587 (STARTTLS) nebo 465 (SSL)."
     except smtplib.SMTPException as exc:
         return False, f"SMTP chyba: {exc}"
     except OSError as exc:
@@ -261,11 +268,23 @@ def odeslat_email(cfg: dict, rows: list[dict]) -> None:
     msg["To"]      = ", ".join(cfg["prijemci"])
     msg.attach(MIMEText(html, "html", "utf-8"))
 
-    with smtplib.SMTP(cfg["smtp_host"], int(cfg["smtp_port"])) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(cfg["smtp_user"], cfg["smtp_pass"])
-        server.sendmail(cfg["smtp_user"], cfg["prijemci"], msg.as_string())
+    host = str(cfg.get("smtp_host") or "").strip()
+    port = int(cfg.get("smtp_port", 587))
+    user = str(cfg.get("smtp_user") or "").strip()
+    pwd = str(cfg.get("smtp_pass") or "")
+
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=30) as server:
+            server.ehlo()
+            server.login(user, pwd)
+            server.sendmail(user, cfg["prijemci"], msg.as_string())
+    else:
+        with smtplib.SMTP(host, port, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(user, pwd)
+            server.sendmail(user, cfg["prijemci"], msg.as_string())
 
 
 def odeslat_webhook(cfg: dict, rows: list[dict]) -> None:
