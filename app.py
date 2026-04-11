@@ -6,6 +6,7 @@ Spuštění: streamlit run app.py
 
 import streamlit as st
 from datetime import date, timedelta
+import html as _html
 import io
 import pandas as pd
 
@@ -304,7 +305,7 @@ if page == "📋 Přehled":
                     👤 {_subject_label(r)} &nbsp;·&nbsp;
                     👷 {r.get('revizni_technik') or '—'}
                 </div>
-                {f'<div class="detail">📝 {r["poznamka"]}</div>' if r.get("poznamka") else ""}
+                {f'<div class="detail">📝 {_html.escape(str(r["poznamka"]))}</div>' if r.get("poznamka") else ""}
                 <div class="hlavni-info">
                     <span class="typ-pill">{r.get('typ') or '—'}</span>
                     <span class="next-date {next_cls}">📅 Další revize: {db.fmt_date(r['datum_platnosti'])}</span>
