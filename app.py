@@ -67,6 +67,7 @@ st.markdown("""
   }
   .revize-karta .nazev { font-weight:600; font-size:1rem; margin-bottom:4px; }
   .revize-karta .detail { font-size:0.82rem; color:#888; margin-bottom:6px; }
+  .revize-karta .poznamka { font-size:0.85rem; color:#aaa; margin-bottom:6px; font-style:italic; }
     .revize-karta .hlavni-info {
         display:flex;
         justify-content:space-between;
@@ -298,7 +299,7 @@ if page == "📋 Přehled":
                 next_cls = "next-orange"
 
             _e = _html.escape
-            _poznamka_div = f'<div class="detail">📝 {_e(str(r["poznamka"]))}</div>' if r.get("poznamka") else ""
+            _poznamka_div = f'<div class="poznamka">📝 {_e(str(r["poznamka"]))}</div>' if r.get("poznamka") else ""
             card_html = (
                 '<div class="revize-karta">'
                 f'<div class="nazev">{_e(str(r["nazev"] or ""))}</div>'
