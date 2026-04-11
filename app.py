@@ -298,22 +298,19 @@ if page == "📋 Přehled":
                 next_cls = "next-orange"
 
             _e = _html.escape
-            card_html = f"""
-            <div class="revize-karta">
-                <div class="nazev">{_e(str(r['nazev'] or ''))}</div>
-                <div class="detail">
-                    📍 {_e(str(r.get('umisteni') or '—'))} &nbsp;·&nbsp;
-                    👤 {_e(_subject_label(r))} &nbsp;·&nbsp;
-                    👷 {_e(str(r.get('revizni_technik') or '—'))}
-                </div>
-                {f'<div class="detail">📝 {_e(str(r["poznamka"]))}</div>' if r.get("poznamka") else ""}
-                <div class="hlavni-info">
-                    <span class="typ-pill">{_e(str(r.get('typ') or '—'))}</span>
-                    <span class="next-date {next_cls}">📅 Další revize: {db.fmt_date(r['datum_platnosti'])}</span>
-                </div>
-                <span class="status-badge {badge_cls}">{stav_txt}</span>
-            </div>
-            """
+            _poznamka_div = f'<div class="detail">📝 {_e(str(r["poznamka"]))}</div>' if r.get("poznamka") else ""
+            card_html = (
+                '<div class="revize-karta">'
+                f'<div class="nazev">{_e(str(r["nazev"] or ""))}</div>'
+                f'<div class="detail">📍 {_e(str(r.get("umisteni") or "—"))} &nbsp;·&nbsp; 👤 {_e(_subject_label(r))} &nbsp;·&nbsp; 👷 {_e(str(r.get("revizni_technik") or "—"))}</div>'
+                + _poznamka_div +
+                f'<div class="hlavni-info">'
+                f'<span class="typ-pill">{_e(str(r.get("typ") or "—"))}</span>'
+                f'<span class="next-date {next_cls}">📅 Další revize: {db.fmt_date(r["datum_platnosti"])}</span>'
+                f'</div>'
+                f'<span class="status-badge {badge_cls}">{stav_txt}</span>'
+                '</div>'
+            )
             st.markdown(card_html, unsafe_allow_html=True)
 
             if st.button("🗑️ Smazat", key=f"del_{r['id']}", disabled=not _is_admin()):
