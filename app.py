@@ -67,7 +67,7 @@ st.markdown("""
   }
   .revize-karta .nazev { font-weight:600; font-size:1rem; margin-bottom:4px; }
   .revize-karta .detail { font-size:0.82rem; color:#888; margin-bottom:6px; }
-  .revize-karta .poznamka { font-size:0.85rem; color:#aaa; margin-bottom:6px; font-style:italic; }
+  .revize-karta .poznamka { font-size:0.85rem; color:#2ecc71; margin-bottom:6px; font-weight:600; }
     .revize-karta .hlavni-info {
         display:flex;
         justify-content:space-between;
