@@ -205,8 +205,8 @@ with st.sidebar:
     blizici = sum(1 for r in vsechny if 0 <= db.stav(r["datum_platnosti"])[2] <= 7)
 
     st.markdown(f"**Celkem revizí:** {len(vsechny)}")
-    st.markdown(f"<span style='color:#e74c3c'>**Prošlé:** {prosle}</span>",    unsafe_allow_html=True)
-    st.markdown(f"<span style='color:#e67e22'>**Do 7 dní:** {blizici}</span>", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:{_t['badge_red_text']}'>**Prošlé:** {prosle}</span>",    unsafe_allow_html=True)
+    st.markdown(f"<span style='color:{_t['badge_orange_text']}'>**Do 7 dní:** {blizici}</span>", unsafe_allow_html=True)
     st.markdown(f"👤 {_current_user()} ({st.session_state.get('role', 'admin')})")
 
     st.markdown("---")
