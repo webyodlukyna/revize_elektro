@@ -23,85 +23,124 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""
+# ─── Motiv (tmavý / světlý) ───────────────────────────────────────────────────
+THEMES = {
+    "dark": {
+        "app_bg": "#0f1117", "app_text": "#e0e0e0",
+        "sidebar_bg": "#13151f", "sidebar_border": "#2a2d3e",
+        "btn_bg": "#1a1d27", "btn_border": "#3a3d4e", "btn_text": "#e0e0e0",
+        "btn_hover_bg": "#252839", "btn_hover_border": "#5a8dee", "btn_hover_text": "#5a8dee",
+        "input_bg": "#1a1d27", "input_border": "#2a2d3e", "input_text": "#e0e0e0",
+        "hr_color": "#2a2d3e",
+        "card_bg": "#1a1d27", "card_border": "#2a2d3e", "card_detail": "#888",
+        "card_poznamka": "#2ecc71",
+        "pill_border": "#5a8dee55", "pill_bg": "#1f2a44", "pill_text": "#8cb4ff",
+        "next_date": "#f5f7ff", "next_red": "#ff8f8f", "next_orange": "#ffbf7a", "next_green": "#87f0b3",
+        "badge_red_bg": "#3d1a1a", "badge_red_text": "#e74c3c", "badge_red_border": "#e74c3c44",
+        "badge_orange_bg": "#3d2a1a", "badge_orange_text": "#e67e22", "badge_orange_border": "#e67e2244",
+        "badge_green_bg": "#1a3d2a", "badge_green_text": "#2ecc71", "badge_green_border": "#2ecc7144",
+    },
+    "light": {
+        "app_bg": "#f5f6fa", "app_text": "#1a1d27",
+        "sidebar_bg": "#ffffff", "sidebar_border": "#dde1ea",
+        "btn_bg": "#ffffff", "btn_border": "#c7cbd9", "btn_text": "#1a1d27",
+        "btn_hover_bg": "#eef2ff", "btn_hover_border": "#3a66d1", "btn_hover_text": "#3a66d1",
+        "input_bg": "#ffffff", "input_border": "#c7cbd9", "input_text": "#1a1d27",
+        "hr_color": "#dde1ea",
+        "card_bg": "#ffffff", "card_border": "#dde1ea", "card_detail": "#666",
+        "card_poznamka": "#1e8449",
+        "pill_border": "#3a66d155", "pill_bg": "#e8eeff", "pill_text": "#2a4fb0",
+        "next_date": "#12141c", "next_red": "#c0392b", "next_orange": "#c9770c", "next_green": "#1e8449",
+        "badge_red_bg": "#fdecea", "badge_red_text": "#c0392b", "badge_red_border": "#e74c3c44",
+        "badge_orange_bg": "#fdf1e3", "badge_orange_text": "#c9770c", "badge_orange_border": "#e67e2244",
+        "badge_green_bg": "#e8f8ee", "badge_green_text": "#1e8449", "badge_green_border": "#2ecc7144",
+    },
+}
+
+if "theme" not in st.session_state:
+    st.session_state["theme"] = "dark"
+
+_t = THEMES[st.session_state["theme"]]
+
+st.markdown(f"""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
-  html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
-  h1, h2, h3 { font-family: 'IBM Plex Mono', monospace !important; }
-  .stApp { background-color: #0f1117; color: #e0e0e0; }
+  html, body, [class*="css"] {{ font-family: 'IBM Plex Sans', sans-serif; }}
+  h1, h2, h3 {{ font-family: 'IBM Plex Mono', monospace !important; }}
+  .stApp {{ background-color: {_t['app_bg']}; color: {_t['app_text']}; }}
 
-  .status-badge { display:inline-block; padding:3px 10px; border-radius:12px;
-                  font-size:0.78rem; font-weight:600; font-family:'IBM Plex Mono',monospace; }
-  .badge-red    { background:#3d1a1a; color:#e74c3c; border:1px solid #e74c3c44; }
-  .badge-orange { background:#3d2a1a; color:#e67e22; border:1px solid #e67e2244; }
-  .badge-green  { background:#1a3d2a; color:#2ecc71; border:1px solid #2ecc7144; }
+  .status-badge {{ display:inline-block; padding:3px 10px; border-radius:12px;
+                  font-size:0.78rem; font-weight:600; font-family:'IBM Plex Mono',monospace; }}
+  .badge-red    {{ background:{_t['badge_red_bg']}; color:{_t['badge_red_text']}; border:1px solid {_t['badge_red_border']}; }}
+  .badge-orange {{ background:{_t['badge_orange_bg']}; color:{_t['badge_orange_text']}; border:1px solid {_t['badge_orange_border']}; }}
+  .badge-green  {{ background:{_t['badge_green_bg']}; color:{_t['badge_green_text']}; border:1px solid {_t['badge_green_border']}; }}
 
-  div[data-testid="stSidebar"] { background:#13151f; border-right:1px solid #2a2d3e; }
-    [data-testid="collapsedControl"] { display: none !important; }
-    [data-testid="stSidebarCollapseButton"] { display: none !important; }
-    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+  div[data-testid="stSidebar"] {{ background:{_t['sidebar_bg']}; border-right:1px solid {_t['sidebar_border']}; }}
+    [data-testid="collapsedControl"] {{ display: none !important; }}
+    [data-testid="stSidebarCollapseButton"] {{ display: none !important; }}
+    [data-testid="stSidebarCollapsedControl"] {{ display: none !important; }}
 
-  .stButton > button {
-    background:#1a1d27; color:#e0e0e0; border:1px solid #3a3d4e;
+  .stButton > button {{
+    background:{_t['btn_bg']}; color:{_t['btn_text']}; border:1px solid {_t['btn_border']};
     border-radius:6px; font-family:'IBM Plex Mono',monospace; font-size:0.85rem; transition:all 0.2s;
-  }
-  .stButton > button:hover { background:#252839; border-color:#5a8dee; color:#5a8dee; }
+  }}
+  .stButton > button:hover {{ background:{_t['btn_hover_bg']}; border-color:{_t['btn_hover_border']}; color:{_t['btn_hover_text']}; }}
 
   .stTextInput > div > div > input,
   .stSelectbox > div > div,
   .stDateInput > div > div > input,
-  .stTextArea textarea {
-    background:#1a1d27 !important; border:1px solid #2a2d3e !important;
-    color:#e0e0e0 !important; border-radius:6px !important;
-  }
-  hr { border-color:#2a2d3e !important; }
+  .stTextArea textarea {{
+    background:{_t['input_bg']} !important; border:1px solid {_t['input_border']} !important;
+    color:{_t['input_text']} !important; border-radius:6px !important;
+  }}
+  hr {{ border-color:{_t['hr_color']} !important; }}
 
   /* Karta revize pro mobil */
-  .revize-karta {
-    background:#1a1d27;
-    border:1px solid #2a2d3e;
+  .revize-karta {{
+    background:{_t['card_bg']};
+    border:1px solid {_t['card_border']};
     border-radius:8px;
     padding:14px 16px;
     margin-bottom:10px;
-  }
-  .revize-karta .nazev { font-weight:600; font-size:1rem; margin-bottom:4px; }
-  .revize-karta .detail { font-size:0.82rem; color:#888; margin-bottom:6px; }
-  .revize-karta .poznamka { font-size:0.85rem; color:#2ecc71; margin-bottom:6px; font-weight:600; }
-    .revize-karta .hlavni-info {
+  }}
+  .revize-karta .nazev {{ font-weight:600; font-size:1rem; margin-bottom:4px; }}
+  .revize-karta .detail {{ font-size:0.82rem; color:{_t['card_detail']}; margin-bottom:6px; }}
+  .revize-karta .poznamka {{ font-size:0.85rem; color:{_t['card_poznamka']}; margin-bottom:6px; font-weight:600; }}
+    .revize-karta .hlavni-info {{
         display:flex;
         justify-content:space-between;
         align-items:center;
         gap:10px;
         margin:8px 0;
         flex-wrap:wrap;
-    }
-    .revize-karta .typ-pill {
+    }}
+    .revize-karta .typ-pill {{
         display:inline-block;
         padding:4px 10px;
         border-radius:999px;
-        border:1px solid #5a8dee55;
-        background:#1f2a44;
-        color:#8cb4ff;
+        border:1px solid {_t['pill_border']};
+        background:{_t['pill_bg']};
+        color:{_t['pill_text']};
         font-size:0.85rem;
         font-weight:600;
         font-family:'IBM Plex Mono',monospace;
-    }
-    .revize-karta .next-date {
+    }}
+    .revize-karta .next-date {{
         font-size:1.02rem;
         font-weight:700;
-        color:#f5f7ff;
+        color:{_t['next_date']};
         font-family:'IBM Plex Mono',monospace;
-    }
-    .revize-karta .next-date.next-red { color:#ff8f8f; }
-    .revize-karta .next-date.next-orange { color:#ffbf7a; }
-    .revize-karta .next-date.next-green { color:#87f0b3; }
+    }}
+    .revize-karta .next-date.next-red {{ color:{_t['next_red']}; }}
+    .revize-karta .next-date.next-orange {{ color:{_t['next_orange']}; }}
+    .revize-karta .next-date.next-green {{ color:{_t['next_green']}; }}
 
   /* Responzivní sloupce – na úzkých obrazovkách skryjeme vedlejší sloupce */
-  @media (max-width: 640px) {
-    .desktop-only { display: none !important; }
-    h1 { font-size: 1.4rem !important; }
-  }
+  @media (max-width: 640px) {{
+    .desktop-only {{ display: none !important; }}
+    h1 {{ font-size: 1.4rem !important; }}
+  }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -142,6 +181,12 @@ zakaznici = db.get_zakaznici()
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚡ RP ELECTRIC SOLUTION s.r.o.")
+
+    _theme_label = "☀️ Světlý režim" if st.session_state["theme"] == "dark" else "🌙 Tmavý režim"
+    if st.button(_theme_label, use_container_width=True, key="theme_toggle_btn"):
+        st.session_state["theme"] = "light" if st.session_state["theme"] == "dark" else "dark"
+        st.rerun()
+
     st.markdown("---")
     page = st.radio("Navigace", [
         "📋 Přehled",
